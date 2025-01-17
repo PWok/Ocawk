@@ -1,0 +1,6 @@
+open Ocawk.Main;;
+
+run (compile "{print $0}") {| ala ma kota
+kot ma alę
+ala kocha kota
+kot nie cierpi ali|};;

@@ -1,0 +1,10 @@
+(library
+ (name ocawk)
+ (libraries
+  str
+ )
+ )
+
+(menhir (modules parser))
+
+(ocamllex lexer)
