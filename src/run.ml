@@ -1,5 +1,6 @@
-open Compile
 open Values
+
+open Values.EnvMonad
 
 let default_env = VarMap.empty        |> 
     VarMap.add "FS"   (VString  " ")  |>
@@ -19,17 +20,17 @@ let remove_old_fields env =
     then env 
     else inner (VarMap.remove ("$"^string_of_int i) env) (i-1)  
   in
-  inner env ((lookup "NF" env) |> float_of_value |> int_of_float)
+  inner env (((lookup "NF" |> view) env) |> snd |> float_of_value |> int_of_float) (* TODO: Rewrite this to properly use the monad not view  *)
 
 let update_env (env: env) (line: string) =
-  let fs = lookup "FS" env |> string_of_value in 
+  let fs = (lookup "FS" |> view) env |> snd |> string_of_value in 
   let fields = Str.split (Str.regexp fs) line in
   let fields = if fields = [""] then [] else fields in
   let count = List.length fields in
   let env = remove_old_fields env in
   let env = env |>
-    VarMap.add "NR" (VNum (1. +. float_of_value (lookup "NR" env))) |>
-    VarMap.add "FNR" (VNum (1. +. float_of_value (lookup "FNR" env))) |>
+    VarMap.add "NR" (VNum (1. +. float_of_value ((lookup "NR" |> view) env |> snd ) )) |>
+    VarMap.add "FNR" (VNum (1. +. float_of_value ((lookup "FNR" |> view) env |> snd ))) |>
     VarMap.add "NF" (VNum (float_of_int count)) |>
     VarMap.add "$0" (VString line)
     in
@@ -37,10 +38,10 @@ let update_env (env: env) (line: string) =
   env
 
   
-
+(* FIXME: get rid of all the view function uses *)
   
 let get_next_line (env: env) (text: string) : string option * string option  =
-  let rs = lookup "RS" env |> string_of_value in
+  let rs = (lookup "RS" |> view) env |> snd |> string_of_value in
   let split = Str.bounded_split (Str.regexp rs) text 2 in
   match split with
     | [] -> None, None

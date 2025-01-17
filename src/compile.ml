@@ -1,6 +1,11 @@
 open Ast
 open Values
 
+
+open Values.EnvMonad
+let (let*) = EnvMonad.bind
+
+
 type compiled_stmt = env -> env * unit
 
 let parse (s : string) : code =
@@ -38,78 +43,101 @@ let eval_binop bop v1 v2 =
       let matched = string_of_value v1 in
       VBool (regex_match matched (string_of_value v2))
   
-let rec eval_expr (e: expr) (env: env) : env * value = 
-  match e with
-  | Num n  -> env, VNum n
-  | Str s  -> env, VString s
-  | Var idnt -> env, lookup idnt env
+let rec eval_expr (e: expr ) : value t = 
+   match e with
+  | Num n  -> VNum n |> return
+  | Str s  -> VString s |> return
+  | Var ident -> lookup ident
   | Binop(bop, e1, e2) ->
-    let env, v1 = eval_expr e1 env in
-    let env, v2 = eval_expr e2 env in
-    env, eval_binop bop v1 v2
+    let* v1 = eval_expr e1 in
+    let* v2 = eval_expr e2 in
+    eval_binop bop v1 v2 |> return
   | Assign(id, e) ->
-    let env, v = eval_expr e env in
-    let env = VarMap.add id v env in
-    env, v 
+    let* v = eval_expr e in
+    assign id v
     
     
   
-let eval_trigger (cond: condition) (env: env): bool =
+let eval_trigger (cond: condition) : bool t =
   match cond with
-  | Regex r -> regex_match (lookup "$0" env |> string_of_value) r    
-  | Expr e  -> eval_expr e env |> snd |> bool_of_value (* Ignore enviroment modification in trigger evaluation *)
-  | Begin   -> lookup "$isBegin" env |> bool_of_value
-  | End     -> lookup "$isEnd" env |> bool_of_value
+  | Regex r -> 
+    let* record = lookup "$0" in
+    regex_match (string_of_value record) r |> return
+  | Expr e  -> 
+    let* v = eval_expr e in 
+    v |> bool_of_value |> return (* Ignore enviroment modification in trigger evaluation *)
+  | Begin   -> 
+    let* v = lookup "$isBegin" in v |> bool_of_value |> return
+  | End     -> 
+    let* v = lookup "$isEnd" in v |> bool_of_value |> return
 ;;
 
 
-let eval_print (env:env) (exprs: expr list) = 
+let eval_print (exprs: expr list): unit t = 
   (* evaluate all the expressions, store them and print them. The value of OFS
   is whatever it is after ALL the evaluations (got this behaviour by testing awk) *)
-  let rec inner env exprs = 
+  let rec inner (exprs: expr list) : string list t = 
     match exprs with
-    | [] -> env, []
+    | [] -> return []
     | e::es -> 
-      let env, v = eval_expr e env in
-      let env, tail = inner env es in
-      env, (string_of_value v) :: tail
+      let* v = eval_expr e in
+      let* tail = inner es in
+      return ((string_of_value v) :: tail)
   in
-  let env, elems = if exprs = []
-    then env, [lookup "$0" env |> string_of_value]
-    else inner env exprs
+  let* elems = if exprs = []
+    then
+      let* elem = lookup "$0" in
+      return [elem |> string_of_value]
+    else inner exprs
   in 
-  let ofs = lookup "OFS" env |> string_of_value in
-  let ors = lookup "ORS" env |> string_of_value in
-  let line = String.concat ofs elems in
+  let* ofs = lookup "OFS" in
+  let* ors = lookup "ORS"  in
+  let line = String.concat (string_of_value ofs) elems in
   print_string line;
-  print_string ors;
-  env, ()
+  print_string (string_of_value ors);
+  return ()
   
-let rec eval_stmt (stmt: stmt) (env: env) : env * unit =
+let rec eval_stmt (stmt: stmt) : unit t =
   match stmt with
-  | Print es -> eval_print env es
+  | Print es -> eval_print es
   | If(p, t, f) ->
-    let env, v = eval_expr p env in
+    let* v = eval_expr p in
     if v |> bool_of_value
-    then eval_actions t env
-    else eval_actions f env
+    then eval_actions t
+    else eval_actions f
   | ExprStmt e -> 
-    let env, _ = eval_expr e env in env, ()
+    let* _ = eval_expr e in return ()
     
     
-and eval_actions (actions: stmt list) (env: env) : env * unit =
-  List.fold_left (fun env stmt -> eval_stmt stmt env |> fst) env actions, ()
+and eval_actions (actions: stmt list) : unit t =
+  match actions with
+  | [] -> return ()
+  | x::xs ->
+    let* _ = eval_stmt x in
+    eval_actions xs
 
-let eval_instruction (instr: instruction): compiled_stmt = 
+    
+let rec check_triggers (triggers: condition list) : bool t =
+  match triggers with
+  | [] -> return false
+  | x :: xs -> 
+    let* v = eval_trigger x in
+    if v
+      then return true
+      else check_triggers xs 
+    
+let eval_instruction (instr: instruction): unit t = 
   let triggers, actions = instr in 
-  fun env -> 
-    if (triggers = [] && not (lookup "$isBegin" env |> bool_of_value) && not (lookup "$isEnd" env |> bool_of_value)) || List.exists (fun x -> eval_trigger x env) triggers 
-    then 
-      eval_actions actions env
-    else env, ()
+  let* is_begin = lookup "$isBegin" in
+  let* is_end = lookup "$isEnd" in
+  let* is_trigged = check_triggers triggers in
+  if (triggers = [] && not (is_begin |> bool_of_value) && not (is_end |> bool_of_value)) || is_trigged
+  then 
+    eval_actions actions
+  else return ()
   
 let compile_code (code: code): compiled_stmt = fun env -> 
-  List.fold_left (fun acc instr -> (eval_instruction instr) acc |> fst) env code, ()
+  List.fold_left (fun acc instr -> (eval_instruction instr |> view) acc |> fst) env code, ()
 
 let compile (s : string)  =
    s |> parse |> compile_code
