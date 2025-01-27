@@ -1,10 +1,23 @@
-(library
- (name ocawk)
- (libraries
-  str
- )
- )
-
 (menhir (modules parser))
 
 (ocamllex lexer)
+
+(library
+ (name ocawklib)
+ (libraries
+  str
+ )
+ (modules ast compile lexer parser run values)
+ )
+
+
+
+(executable
+ (name ocawk)
+ (libraries
+  ocawklib
+ )
+ (modes byte exe)
+ (public_name ocawk)
+ (modules ocawk)
+ )

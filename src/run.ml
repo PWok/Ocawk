@@ -2,6 +2,7 @@ open Values
 
 open Values.EnvMonad
 
+
 let default_env = VarMap.empty        |> 
     VarMap.add "FS"   (VString  " ")  |>
     VarMap.add "RS"   (VString "\n")  |> 
@@ -59,15 +60,21 @@ let rec main_loop env lines script =
     let env = script (update_env env line) |> fst in
     main_loop env tail script
   | _ -> failwith "this shouldn't be possible (main loop)" 
-      
-let run (script: env -> env * unit) (input_text: string): unit =
-  (* Run BEGIN: *)
-  let env = VarMap.add "$isBegin" (VBool true) default_env in
+
+  
+let run_begin (env: env) (script: env -> env * unit): env =
+  let env = VarMap.add "$isBegin" (VBool true) env in
   let env = VarMap.add "$isEnd" (VBool false) env in
   let env = fst (script env) in
   let env = VarMap.add "$isBegin" (VBool false) env in
-  (* Run lines: *)
-  let env = main_loop env input_text script in
-  (* run END *)
+  env
+  
+let run_end (env: env) (script: env -> env * unit): env =
   let env = VarMap.add "$isEnd" (VBool true) env in
-  ignore env
+  let env = fst (script env) in
+  env
+
+let run (env: env) (script: env -> env * unit) (input_text: string): env =
+  let env = main_loop env input_text script in
+  env
+  

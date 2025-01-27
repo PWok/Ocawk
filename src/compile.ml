@@ -8,8 +8,14 @@ let (let*) = EnvMonad.bind
 
 type compiled_stmt = env -> env * unit
 
+exception Parse_error of Lexing.position * string
+
 let parse (s : string) : code =
-  Parser.prog Lexer.read (Lexing.from_string s)
+  let lexbuf = Lexing.from_string s in
+  Lexing.set_filename lexbuf "<string>";
+  try Parser.prog Lexer.read lexbuf with
+  | Parser.Error ->
+    raise (Parse_error(Lexing.lexeme_start_p lexbuf, Lexing.lexeme lexbuf))
 
   
 let regex_match text regex = 
