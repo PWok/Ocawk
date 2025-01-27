@@ -1,0 +1,1 @@
+BEGIN {FS="\t"}{$0 = "ala	ma	kota,	kot	ma	alę"; print $3}

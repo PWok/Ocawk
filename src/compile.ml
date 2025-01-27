@@ -48,7 +48,51 @@ let eval_binop bop v1 v2 =
   | NRegMatch, v1, v2 ->
       let matched = string_of_value v1 in
       VBool (regex_match matched (string_of_value v2))
-  
+
+      
+let rec rebuild_line (sep: string) (n: int) = 
+  if n = 1
+  then
+    let* f = lookup "$1" in
+    f |> string_of_value |> return
+  else
+    let* field = lookup ("$" ^ string_of_int n) in
+    let field = string_of_value field in
+    let* rest = rebuild_line sep (n-1) in
+    (rest ^ sep ^ field) |> return
+
+let rec rebuild_fields (fields: string list) (i: int) : value t =
+  match fields with
+  | [] -> failwith "this shouldn't happen (Compile.rebuild_fields)"
+  | [x] -> assign ("$" ^ string_of_int i) (VString x)
+  | x::xs ->
+    let* _ = assign ("$" ^ string_of_int i) (VString x) in
+    rebuild_fields xs (i+1)
+    
+let rebuild_record id (v: value) : value t =
+  let n = int_of_string_opt (String.sub id 1 ((String.length id) - 1)) in
+  match n with
+  | None -> return v
+  | Some 0 ->
+    let* fs = lookup "FS" in
+    let fs = string_of_value fs in
+    let line = string_of_value v in
+    let fields = Str.split (Str.regexp fs) line in
+    let fields = if fields = [""] then [] else fields in
+    let count = List.length fields in
+    let* m = assign "NF" (VNum (float_of_int count)) in
+    if fields != []
+      then rebuild_fields fields 1
+      else return m
+  | Some n ->
+    let* nf = lookup "NF" in
+    let* sep = lookup "OFS" in
+    let n = max n (nf |> float_of_value |> int_of_float) in
+    let* line = rebuild_line (string_of_value sep) n in
+    assign "$0" (VString line)
+    
+    
+      
 let rec eval_expr (e: expr ) : value t = 
    match e with
   | Num n  -> VNum n |> return
@@ -60,7 +104,10 @@ let rec eval_expr (e: expr ) : value t =
     eval_binop bop v1 v2 |> return
   | Assign(id, e) ->
     let* v = eval_expr e in
-    assign id v
+    let* v = assign id v in
+    if '$' = String.get id 0 (* TODO: if $0 is set the nrebuild all fields*)
+      then rebuild_record id v
+      else return v
     
     
   

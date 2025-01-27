@@ -26,14 +26,15 @@ open Ast
 %token IF
 %token ELSE
 %token COMMA
-%token BEGIN
 %token PRINT
+%token BEGIN
 %token END
-%token ENDLINE
+%token STMT_SEP
 %token EOF
 %token REGMATCH
 %token NREGMATCH
 %token ASSIGN
+
 
 %start <Ast.code> prog
 
@@ -46,46 +47,54 @@ open Ast
 %left PLUS MINUS
 %left TIMES DIV
 
-
-
 %%
 
 prog:
-  | e = separated_list(ENDLINE, instruction); EOF { e }
+  | e = instructions; EOF { e }
   ;
 
-instruction:
-  | LBRACE; list(ENDLINE); a = bracketed_actions; RBRACE { [], a }
-  | p = separated_nonempty_list(COMMA, pattern); a = action { p, a }
-  | p = separated_nonempty_list(COMMA, pattern) { p, [ Print [] ]}
+instructions:
+  | i = instruction { [i] }
+  | i = instruction; is = instructions { 
+        match i, is with
+        | (p, []), ([], a)::xs -> (p, a) :: xs
+        | (p, []), xs -> (p, [ Print [] ]) :: xs
+        | _ -> i::is     
+    }
   ;
 
-
-pattern:
+instruction: 
+  | LBRACE; list(STMT_SEP); a = bracketed_actions; RBRACE { [], a }
+  | p = pattern { [p], []}
+  ;
+  
+pattern: /* TODO: allow ORing and ANDing and NOTing patterns */
+  | BEGIN     { Begin }
+  | END       { End }
   | r = REGEX { Regex r }
-/*   | e = expr { Expr e } */
-  | BEGIN { Begin }
-  | END { End }
-  ;
+  /* | e = expr { Expr e } */
+  ; 
+
+
   
 action:
   | s = statement { [s] }
   | LBRACE; RBRACE { [] }
-  | LBRACE; list(ENDLINE); a = bracketed_actions; RBRACE { a }
+  | LBRACE; list(STMT_SEP); a = bracketed_actions; RBRACE { a }
   ;
 
 bracketed_actions:
   | s = statement { [s] }
-  | s = statement; nonempty_list(ENDLINE); a=bracketed_actions { s::a }
-  | s = statement; nonempty_list(ENDLINE) { [s] }
+  | s = statement; nonempty_list(STMT_SEP); a=bracketed_actions { s::a }
+  | s = statement; nonempty_list(STMT_SEP) { [s] }
   ;
   
 statement:
   | PRINT; es = separated_list(COMMA, expr) { Print es }
-/*   | PRINT; LPAREN; es = separated_list(COMMA, expr); RPAREN { Print es } */
+/*   | PRINT; LPAREN; es = separated_list(COMMA, expr); RPAREN { Print es } */ /* TODO fix shift reduce and add this */
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; e2 = bracketed_actions; RBRACE; { If(e1, e2, []) }
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; e2 = bracketed_actions; RBRACE; ELSE; e3 = action { If(e1, e2, e3) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(STMT_SEP); e2 = bracketed_actions; RBRACE; { If(e1, e2, []) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(STMT_SEP); e2 = bracketed_actions; RBRACE; ELSE; e3 = action { If(e1, e2, e3) }
   | e = expr { ExprStmt e } 
   ;
 

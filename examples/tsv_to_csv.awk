@@ -1,0 +1,1 @@
+BEGIN { FS="\t"; OFS="," } {$1=$1; print $0}

@@ -23,7 +23,8 @@ let ident = (letter | '$') (letter | digit)*
 
 rule read =
   parse
-  | "\n" { ENDLINE }
+  | "\n" { STMT_SEP }
+  | ";"  { STMT_SEP }
   | white { read lexbuf }
   | "&&" { AND }
   | "||" { OR }
@@ -60,7 +61,7 @@ rule read =
   | ident { IDENT (Lexing.lexeme lexbuf) }
   | eof { EOF }
 
-and string = (* This *definetly* isnt just copy pasted from stack overflow. Definetly. *)
+and string = (* This *definitely* isnt just copy-pasted from stack overflow. definitely. *)
   parse 
   | '"'
       { () }
