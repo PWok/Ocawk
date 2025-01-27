@@ -55,7 +55,7 @@ prog:
 
 instructions:
   | i = instruction { [i] }
-  | i = instruction; is = instructions { 
+  | i = instruction; list(STMT_SEP); is = instructions { 
         match i, is with
         | (p, []), ([], a)::xs -> (p, a) :: xs
         | (p, []), xs -> (p, [ Print [] ]) :: xs
