@@ -120,13 +120,13 @@ let eval_trigger (cond: condition) : bool t =
     let* v = eval_expr e in 
     v |> bool_of_value |> return (* Ignore enviroment modification in trigger evaluation *)
   | Begin   -> 
-    let* v = lookup "$isBegin" in v |> bool_of_value |> return
+    let* v = lookup "0#isBegin" in v |> bool_of_value |> return
   | End     -> 
-    let* v = lookup "$isEnd" in v |> bool_of_value |> return
+    let* v = lookup "0#isEnd" in v |> bool_of_value |> return
 ;;
 
 
-let eval_print (exprs: expr list): unit t = 
+let eval_print (exprs: expr list): _ t = 
   (* evaluate all the expressions, store them and print them. The value of OFS
   is whatever it is after ALL the evaluations (got this behaviour by testing awk) *)
   let rec inner (exprs: expr list) : string list t = 
@@ -144,15 +144,33 @@ let eval_print (exprs: expr list): unit t =
     else inner exprs
   in 
   let* ofs = lookup "OFS" in
-  let* ors = lookup "ORS"  in
   let line = String.concat (string_of_value ofs) elems in
-  print_string line;
-  print_string (string_of_value ors);
+  return line
+
+  
+let print_to_file e es flags = 
+  let* file_name = eval_expr e in
+  let file_name = string_of_value file_name in
+  let* line = eval_print es in
+  let* ors = lookup "ORS"  in
+  let ors = string_of_value ors in
+  let* file_descriptor = lookup @@ "0#" ^ file_name in
+  let file_descriptor = if is_filedesc file_descriptor
+    then filedesc_of_value file_descriptor
+    else Out_channel.open_gen flags 0o666 file_name
+  in
+  output_string file_descriptor (line ^ ors);
+  let* _ = assign ("0#" ^ file_name) (VFileDesc file_descriptor) in
   return ()
   
 let rec eval_stmt (stmt: stmt) : unit t =
   match stmt with
-  | Print es -> eval_print es
+  | Print es ->
+    let* line = eval_print es in
+    let* ors = lookup "ORS"  in
+    print_string line;
+    print_string @@ string_of_value ors;
+    return ()
   | If(p, t, f) ->
     let* v = eval_expr p in
     if v |> bool_of_value
@@ -160,7 +178,12 @@ let rec eval_stmt (stmt: stmt) : unit t =
     else eval_actions f
   | ExprStmt e -> 
     let* _ = eval_expr e in return ()
-    
+  | PrintWrite(es, e) -> (* TODO: refactor -- a lot of code occurs twice *)
+    let flags = [Out_channel.Open_wronly; Out_channel.Open_creat; Out_channel.Open_trunc; Open_text] in
+    print_to_file e es flags
+  | PrintAppend(es, e) ->
+    let flags = [Out_channel.Open_append; Out_channel.Open_creat; Open_text] in
+    print_to_file e es flags
     
 and eval_actions (actions: stmt list) : unit t =
   match actions with
@@ -181,8 +204,8 @@ let rec check_triggers (triggers: condition list) : bool t =
     
 let eval_instruction (instr: instruction): unit t = 
   let triggers, actions = instr in 
-  let* is_begin = lookup "$isBegin" in
-  let* is_end = lookup "$isEnd" in
+  let* is_begin = lookup "0#isBegin" in
+  let* is_end = lookup "0#isEnd" in
   let* is_trigged = check_triggers triggers in
   if (triggers = [] && not (is_begin |> bool_of_value) && not (is_end |> bool_of_value)) || is_trigged
   then 

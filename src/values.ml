@@ -3,7 +3,9 @@ type value =
 | VNum of float
 | VBool of bool
 | VString of string
-      
+| VFileDesc of Out_channel.t (* FIXME this is a very stupid solution *)
+
+
 module VarMap = Map.Make(String)
 type env = value VarMap.t
 
@@ -39,26 +41,38 @@ end = struct
 end 
 
 
+let is_filedesc v =
+  match v with
+  | VFileDesc _ -> true
+  | _ -> false
 
+let filedesc_of_value v = 
+  match v with
+  | VFileDesc v -> v
+  | _ -> failwith "this is absurd (casting not a file descriptor to file descriptor)"
 
 let string_of_value v = 
   match v with
   | VNum n    -> string_of_float n
   | VBool b   -> string_of_bool b
   | VString s -> s
+  | VFileDesc _ -> failwith "this is absurd (casting of file descriptor)"
   
 let bool_of_value v = 
   match v with
   | VNum n    -> n > 0.
   | VBool b   -> b
   | VString s -> s = ""
+  | VFileDesc _ -> failwith "this is absurd (casting of file descriptor)"
   
 let float_of_value v =
   match v with
   | VNum n    -> n
   | VBool b   -> if b then 1. else 0.
   | VString s ->
-    match float_of_string_opt s with (* FIXME: this is not how awk does this see: https://www.gnu.org/software/gawk/manual/html_node/Strings-And-Numbers.html*)
+    begin match float_of_string_opt s with (* FIXME: this is not how awk does this see: https://www.gnu.org/software/gawk/manual/html_node/Strings-And-Numbers.html*)
     | None -> 0.
     | Some v -> v
+    end
+  | VFileDesc _ -> failwith "this is absurd (casting of file descriptor)"
 

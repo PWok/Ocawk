@@ -26,6 +26,7 @@ rule read =
   | "\n" { STMT_SEP }
   | ";"  { STMT_SEP }
   | white { read lexbuf }
+  | ">>" { APPEND }
   | "&&" { AND }
   | "||" { OR }
   | "==" { EQ }

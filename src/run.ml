@@ -63,14 +63,14 @@ let rec main_loop env lines script =
 
   
 let run_begin (env: env) (script: env -> env * unit): env =
-  let env = VarMap.add "$isBegin" (VBool true) env in
-  let env = VarMap.add "$isEnd" (VBool false) env in
+  let env = VarMap.add "0#isBegin" (VBool true) env in
+  let env = VarMap.add "0#isEnd" (VBool false) env in
   let env = fst (script env) in
-  let env = VarMap.add "$isBegin" (VBool false) env in
+  let env = VarMap.add "0#isBegin" (VBool false) env in
   env
   
 let run_end (env: env) (script: env -> env * unit): env =
-  let env = VarMap.add "$isEnd" (VBool true) env in
+  let env = VarMap.add "0#isEnd" (VBool true) env in
   let env = fst (script env) in
   env
 

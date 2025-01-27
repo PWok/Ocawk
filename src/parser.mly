@@ -1,5 +1,11 @@
 %{
 open Ast
+
+type print_type = 
+  | Normal
+  | Write of expr
+  | Append of expr
+
 %}
 
 
@@ -34,7 +40,7 @@ open Ast
 %token REGMATCH
 %token NREGMATCH
 %token ASSIGN
-
+%token APPEND
 
 %start <Ast.code> prog
 
@@ -55,7 +61,7 @@ prog:
 
 instructions:
   | i = instruction { [i] }
-  | i = instruction; list(STMT_SEP); is = instructions { 
+  | i = instruction; nonempty_list(STMT_SEP); is = instructions { 
         match i, is with
         | (p, []), ([], a)::xs -> (p, a) :: xs
         | (p, []), xs -> (p, [ Print [] ]) :: xs
@@ -72,9 +78,8 @@ pattern: /* TODO: allow ORing and ANDing and NOTing patterns */
   | BEGIN     { Begin }
   | END       { End }
   | r = REGEX { Regex r }
-  /* | e = expr { Expr e } */
+  | e = expr { Expr e }
   ; 
-
 
   
 action:
@@ -90,7 +95,14 @@ bracketed_actions:
   ;
   
 statement:
-  | PRINT; es = separated_list(COMMA, expr) { Print es }
+  | PRINT; GT; e=str_expr {PrintWrite([], e)}
+  | PRINT; APPEND; e=str_expr {PrintAppend([], e)}
+  | PRINT; p = print_body {
+          match p with
+          | es, Normal   -> Print es
+          | es, Write e -> PrintWrite(es, e)
+          | es, Append e -> PrintAppend(es, e)
+          }
 /*   | PRINT; LPAREN; es = separated_list(COMMA, expr); RPAREN { Print es } */ /* TODO fix shift reduce and add this */
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
   | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(STMT_SEP); e2 = bracketed_actions; RBRACE; { If(e1, e2, []) }
@@ -98,18 +110,32 @@ statement:
   | e = expr { ExprStmt e } 
   ;
 
-expr:
+
+print_body:
+  | e = non_gt_expr {[e], Normal}
+  | e1=non_gt_expr; GT; e2=str_expr {([e1], Write e2)}
+  | e1=non_gt_expr; APPEND; e2=str_expr {([e1], Append e2)}
+  | e = non_gt_expr; COMMA; p=print_body { let (l, r) = p in (e::l, r)}
+  ;
+
+
+str_expr:
   | LPAREN; e = expr; RPAREN { e }
   | i = NUM { Num i }
   | s = STR { Str s }
   | x = IDENT { Var x }
+  | id = IDENT; ASSIGN; e = expr {Assign(id, e)}
+  ;
+  
+expr:
+  | e1 = expr; GT; e2 = expr { Binop(Gt, e1, e2) }
+  | e = str_expr { e }
   | e1 = expr; PLUS; e2 = expr { Binop(Add, e1, e2) }
   | e1 = expr; MINUS; e2 = expr { Binop(Sub, e1, e2) }
   | e1 = expr; DIV; e2 = expr { Binop(Div, e1, e2) }
   | e1 = expr; TIMES; e2 = expr { Binop(Mult, e1, e2) }
   | e1 = expr; EQ; e2 = expr { Binop(Eq, e1, e2) }
   | e1 = expr; LT; e2 = expr { Binop(Lt, e1, e2) }
-  | e1 = expr; GT; e2 = expr { Binop(Gt, e1, e2) }
   | e1 = expr; LEQ; e2 = expr { Binop(Le, e1, e2) }
   | e1 = expr; GEQ; e2 = expr { Binop(Ge, e1, e2) }
   | e1 = expr; NEQ; e2 = expr { Binop(Neq, e1, e2) }
@@ -119,5 +145,23 @@ expr:
   | e1 = expr; REGMATCH; e2 = expr { Binop(RegMatch, e1, e2) }
   | e1 = expr; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
   | e1 = expr; NREGMATCH; e2 = expr { Binop(NRegMatch, e1, e2) }
-  | id = IDENT; ASSIGN; e = expr {Assign(id, e)}
+  ;
+  
+non_gt_expr:
+  | e = str_expr { e }
+  | e1 = non_gt_expr; PLUS; e2 = non_gt_expr { Binop(Add, e1, e2) }
+  | e1 = non_gt_expr; MINUS; e2 = non_gt_expr { Binop(Sub, e1, e2) }
+  | e1 = non_gt_expr; DIV; e2 = non_gt_expr { Binop(Div, e1, e2) }
+  | e1 = non_gt_expr; TIMES; e2 = non_gt_expr { Binop(Mult, e1, e2) }
+  | e1 = non_gt_expr; EQ; e2 = non_gt_expr { Binop(Eq, e1, e2) }
+  | e1 = non_gt_expr; LT; e2 = non_gt_expr { Binop(Lt, e1, e2) }
+  | e1 = non_gt_expr; LEQ; e2 = non_gt_expr { Binop(Le, e1, e2) }
+  | e1 = non_gt_expr; GEQ; e2 = non_gt_expr { Binop(Ge, e1, e2) }
+  | e1 = non_gt_expr; NEQ; e2 = non_gt_expr { Binop(Neq, e1, e2) }
+  | e1 = non_gt_expr; AND; e2 = non_gt_expr { Binop(Land, e1, e2) }
+  | e1 = non_gt_expr; OR; e2 = non_gt_expr { Binop(Lor, e1, e2) }
+  | e1 = non_gt_expr; REGMATCH; r = REGEX { Binop(RegMatch, e1, Str r) }
+  | e1 = non_gt_expr; REGMATCH; e2 = non_gt_expr { Binop(RegMatch, e1, e2) }
+  | e1 = non_gt_expr; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
+  | e1 = non_gt_expr; NREGMATCH; e2 = non_gt_expr { Binop(NRegMatch, e1, e2) }
   ;

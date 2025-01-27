@@ -40,9 +40,11 @@ let () =
     let setter = (fun env (var, val_) -> Values.VarMap.add var (Values.VString val_) env ) in
     let env = List.fold_left setter Run.default_env !vars in
     let env = Run.run_begin env compiled_code in
-    let runner = (fun filepath env -> Run.run env compiled_code (read_file filepath)) in
+    (* TODO: instead of reading a full file make Run.run take the in_channel file descriptor and read as much as it needs 
+    this gives lazyness, and we like lazyness *)
+    let runner = (fun filepath env -> Run.run env compiled_code (read_file filepath)) in 
     let env = List.fold_right runner !input_file_paths env in
-    let env = Run.run_end env compiled_code in
+    let env = Run.run_end env compiled_code in 
     ignore env
   with
   | Compile.Parse_error(pos, tok) ->
