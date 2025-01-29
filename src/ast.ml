@@ -4,9 +4,8 @@
 (* https://www.gnu.org/software/gawk/manual/html_node/Comparison-Operators.html *)
 (* https://www.gnu.org/software/gawk/manual/html_node/Arithmetic-Ops.html *)
 type bop = Mult | Div | Add | Sub | Eq | Lt | Le | Gt | Ge | Neq
-          | Land | Lor | RegMatch | NRegMatch
+          | Land | Lor | RegMatch | NRegMatch | Concat
           
-(* TODO FIXME XXX Concatenation *)
 
           
 type expr = 

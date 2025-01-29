@@ -23,8 +23,8 @@ let ident = (letter | '$') (letter | digit)*
 
 rule read =
   parse
-  | "\n" { STMT_SEP }
-  | ";"  { STMT_SEP }
+  | "\n" { NEWLINE }
+  | ";"  { SEMICOLON }
   | white { read lexbuf }
   | ">>" { APPEND }
   | "&&" { AND }

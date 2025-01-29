@@ -48,6 +48,7 @@ let eval_binop bop v1 v2 =
   | NRegMatch, v1, v2 ->
       let matched = string_of_value v1 in
       VBool (regex_match matched (string_of_value v2))
+  | Concat, v1, v2 -> VString (string_of_value v1 ^ string_of_value v2)
 
       
 let rec rebuild_line (sep: string) (n: int) = 
@@ -59,7 +60,7 @@ let rec rebuild_line (sep: string) (n: int) =
     let* field = lookup ("$" ^ string_of_int n) in
     let field = string_of_value field in
     let* rest = rebuild_line sep (n-1) in
-    (rest ^ sep ^ field) |> return
+    return (rest ^ sep ^ field)
 
 let rec rebuild_fields (fields: string list) (i: int) : value t =
   match fields with
@@ -178,7 +179,7 @@ let rec eval_stmt (stmt: stmt) : unit t =
     else eval_actions f
   | ExprStmt e -> 
     let* _ = eval_expr e in return ()
-  | PrintWrite(es, e) -> (* TODO: refactor -- a lot of code occurs twice *)
+  | PrintWrite(es, e) ->
     let flags = [Out_channel.Open_wronly; Out_channel.Open_creat; Out_channel.Open_trunc; Open_text] in
     print_to_file e es flags
   | PrintAppend(es, e) ->
