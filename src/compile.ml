@@ -130,9 +130,9 @@ let eval_trigger (cond: condition) : bool t =
     let* v = eval_expr e in 
     v |> bool_of_value |> return (* Ignore enviroment modification in trigger evaluation *)
   | Begin   -> 
-    let* v = lookup "0#isBegin" in v |> bool_of_value |> return
+    let* v = lookup_internal "isBegin" in v |> bool_of_internal_value_option |> return
   | End     -> 
-    let* v = lookup "0#isEnd" in v |> bool_of_value |> return
+    let* v = lookup_internal "isEnd" in v |> bool_of_internal_value_option |> return
 ;;
 
 let eval_print (exprs: expr list): string t = 
@@ -163,13 +163,14 @@ let print_to_file e es flags =
   let* line = eval_print es in
   let* ors = lookup "ORS"  in
   let ors = string_of_value ors in
-  let* file_descriptor = lookup @@ "0#" ^ file_name in
-  let file_descriptor = if is_filedesc file_descriptor
-    then filedesc_of_value file_descriptor
-    else Out_channel.open_gen flags 0o666 file_name
+  let* file_descriptor = lookup_internal @@ "file_" ^ file_name in
+  let file_descriptor = match file_descriptor with
+    | Some (IVFileDescriptor fd) -> fd
+    | Some _ -> raise (InternalValueError file_name)
+    | None -> Out_channel.open_gen flags 0o666 file_name
   in
   output_string file_descriptor (line ^ ors);
-  assign ("0#" ^ file_name) (VFileDesc file_descriptor) >>
+  assign_internal ("file_" ^ file_name) (IVFileDescriptor file_descriptor) >>
   return ()
 
   
@@ -238,10 +239,10 @@ let rec check_triggers (triggers: condition list) : bool t =
     
 let eval_instruction (instr: instruction): unit t = 
   let triggers, actions = instr in 
-  let* is_begin = lookup "0#isBegin" in
-  let* is_end = lookup "0#isEnd" in
+  let* is_begin = lookup_internal "isBegin" in
+  let* is_end = lookup_internal "isEnd" in
   let* is_trigged = check_triggers triggers in
-  if (triggers = [] && not (is_begin |> bool_of_value) && not (is_end |> bool_of_value)) || is_trigged
+  if (triggers = [] && not (is_begin |> bool_of_internal_value_option) && not (is_end |> bool_of_internal_value_option)) || is_trigged
   then 
     eval_action actions
   else return ()

@@ -1,43 +1,48 @@
 open Values
 
+open Values.EnvMonad
 
-let default_env = VarMap.empty        |> 
-    VarMap.add "FS"   (VString  " ")  |>
-    VarMap.add "RS"   (VString "\n")  |> 
-    VarMap.add "OFS"  (VString  " ")  |>
-    VarMap.add "ORS"  (VString "\n")  |> 
-    VarMap.add "NR"   (VNum 0.)       |>
-    VarMap.add "FNR"  (VNum 0.)       |>
-    VarMap.add "NF"   (VNum 0.)       |>
-    VarMap.add "OFMT" (VString "%.6g")|> (* FIXME: Currently unused. add this to printing nums *)
-    VarMap.add "FILENAME" (VString "") (* FIXME: Currently unused.*)
-    (* TODO: this are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
+let default_env =
+    let value_env = 
+      VarMap.empty        |> 
+      VarMap.add "FS"   (VString  " ")  |>
+      VarMap.add "RS"   (VString "\n")  |> 
+      VarMap.add "OFS"  (VString  " ")  |>
+      VarMap.add "ORS"  (VString "\n")  |> 
+      VarMap.add "NR"   (VNum 0.)       |>
+      VarMap.add "FNR"  (VNum 0.)       |>
+      VarMap.add "NF"   (VNum 0.)       |>
+      VarMap.add "OFMT" (VString "%.6g")|> (* FIXME: Currently unused. add this to printing nums *)
+      VarMap.add "FILENAME" (VString "") (* FIXME: Currently unused.*)
+      (* TODO: this are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
+    in
+    value_env, VarMap.empty
 
     
 
-    
-let remove_old_fields env = 
-  let rec inner env i =
+(* TODO: Move fields to use internal_value and make $ a operator *)
+let remove_old_fields (env: env) : env = 
+  let rec inner env i  : env =
     if i = 0
     then env 
-    else inner (VarMap.remove ("$"^string_of_int i) env) (i-1)  
+    else inner (VarMap.remove ("$"^string_of_int i) (fst env), snd env) (i-1)  
   in
   inner env (get_value "NF" env |> float_of_value |> int_of_float)
 
-let update_env (env: env) (line: string) =
+let update_env (env: env) (line: string) : env =
   let fs = get_value "FS" env |> string_of_value in 
   let fields = Str.split (Str.regexp fs) line in
   let fields = if fields = [""] then [] else fields in
   let count = List.length fields in
   let env = remove_old_fields env in
-  let env = env |>
+  let val_env = (fst env) |>
     VarMap.add "NR" (VNum (1. +. float_of_value (get_value "NR" env))) |>
     VarMap.add "FNR" (VNum (1. +. float_of_value (get_value "FNR" env))) |>
     VarMap.add "NF" (VNum (float_of_int count)) |>
     VarMap.add "$0" (VString line)
     in
-  let env, _ = List.fold_left (fun (env, i) field -> VarMap.add ("$" ^ string_of_int i) (VString field) env, i+1) (env, 1) fields in
-  env
+  let val_env, _ = List.fold_left (fun (val_env, i) field -> VarMap.add ("$" ^ string_of_int i) (VString field) val_env, i+1) (val_env, 1) fields in
+  val_env, snd env
   
 let take_until_sep (sep: string) (file: In_channel.t) : string option =
   let concat q = 
@@ -72,7 +77,7 @@ let get_next_record (env: env) (file: In_channel.t) : string option  =
   let rs = get_value "RS" env |> string_of_value in
   take_until_sep rs file
 
-let rec main_loop env (file: In_channel.t) script =
+let rec main_loop env (file: In_channel.t) (script: env -> env * unit) : env =
   match get_next_record env file with
   | None -> env
   | Some line ->
@@ -81,14 +86,14 @@ let rec main_loop env (file: In_channel.t) script =
 
   
 let run_begin (env: env) (script: env -> env * unit): env =
-  let env = VarMap.add "0#isBegin" (VNum 1.) env in
-  let env = VarMap.add "0#isEnd" (VNum 0.) env in
+  let env = fst @@ view (assign_internal "isEnd" (IVBool false)) env in
+  let env = fst @@ view (assign_internal "isBegin" (IVBool true)) env in
   let env = fst (script env) in
-  let env = VarMap.add "0#isBegin" (VNum 0.) env in
+  let env = fst @@ view( assign_internal "isBegin" (IVBool false)) env in
   env
   
 let run_end (env: env) (script: env -> env * unit): env =
-  let env = VarMap.add "0#isEnd" (VNum 1.) env in
+  let env = fst @@ view (assign_internal "isEnd" (IVBool true)) env in
   let env = fst (script env) in
   env
 

@@ -44,7 +44,7 @@ let () =
       | Some c -> Compile.compile c
     in
     let setter = (fun env (var, val_) -> Values.VarMap.add var (Values.VString val_) env ) in
-    let env = List.fold_left setter Run.default_env !vars in
+    let env = List.fold_left setter (fst Run.default_env) !vars, snd  Run.default_env in
     let env = Run.run_begin env compiled_code in
     (* A file descriptor is passed to Run.run so that the evaluation is lazy *)
     let runner filepath env =
