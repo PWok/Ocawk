@@ -1,7 +1,5 @@
 open Values
 
-open Values.EnvMonad
-
 
 let default_env = VarMap.empty        |> 
     VarMap.add "FS"   (VString  " ")  |>
@@ -16,7 +14,7 @@ let default_env = VarMap.empty        |>
     (* TODO: this are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
 
     
-let get_value id env = ((lookup id |> view) env) |> snd
+
     
 let remove_old_fields env = 
   let rec inner env i =
@@ -83,14 +81,14 @@ let rec main_loop env (file: In_channel.t) script =
 
   
 let run_begin (env: env) (script: env -> env * unit): env =
-  let env = VarMap.add "0#isBegin" (VBool true) env in
-  let env = VarMap.add "0#isEnd" (VBool false) env in
+  let env = VarMap.add "0#isBegin" (VNum 1.) env in
+  let env = VarMap.add "0#isEnd" (VNum 0.) env in
   let env = fst (script env) in
-  let env = VarMap.add "0#isBegin" (VBool false) env in
+  let env = VarMap.add "0#isBegin" (VNum 0.) env in
   env
   
 let run_end (env: env) (script: env -> env * unit): env =
-  let env = VarMap.add "0#isEnd" (VBool true) env in
+  let env = VarMap.add "0#isEnd" (VNum 1.) env in
   let env = fst (script env) in
   env
 
