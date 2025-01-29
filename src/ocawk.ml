@@ -1,4 +1,6 @@
 open Ocawklib
+open Values
+open Values.EnvMonad
 
 let read_file filepath = 
   In_channel.with_open_text filepath In_channel.input_all 
@@ -32,7 +34,7 @@ let anon_fun arg =
   | Some _ ->
     input_file_paths := arg::!input_file_paths
 
-
+(* TODO: add running withot text file as repl like real awk does *)
 let () =
   Arg.parse speclist anon_fun usage_msg;
   try
@@ -47,14 +49,18 @@ let () =
     let env = List.fold_left setter (fst Run.default_env) !vars, snd  Run.default_env in
     let env = Run.run_begin env compiled_code in
     (* A file descriptor is passed to Run.run so that the evaluation is lazy *)
-    let runner filepath env =
+    let runner (filepath : string) (env : env) =
+      let env = fst @@ view (assign "FILENAME" (VString filepath)) env in
       let file = In_channel.open_text filepath in
       let v = Run.run env compiled_code file in
       In_channel.close file; v
     in 
     let env = List.fold_right runner !input_file_paths env in
     let env = Run.run_end env compiled_code in 
-    ignore env
+    (* Close all open file descriptors: *)
+    let internal_env = snd env in
+    VarMap.iter (fun _ v -> match v with | IVFileDescriptor file -> Out_channel.close file | _ -> ()) internal_env;
+    ()
   with
   | Compile.Parse_error(pos, tok) ->
     Printf.eprintf "%s:%d:%d: Syntax error, unexpected token %s\n"
@@ -72,5 +78,3 @@ let () =
     Printf.eprintf "Unhandled exception!\n";
     raise e
     (* exit 1 *)
-    
-  (* TODO: dodaj zamykanei file descriptorów *)

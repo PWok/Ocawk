@@ -135,6 +135,7 @@ let eval_trigger (cond: condition) : bool t =
     let* v = lookup_internal "isEnd" in v |> bool_of_internal_value_option |> return
 ;;
 
+
 let eval_print (exprs: expr list): string t = 
   (* evaluate all the expressions, store them and print them. The value of OFS
   is whatever it is after ALL the evaluations (got this behaviour by testing awk) *)
@@ -142,9 +143,16 @@ let eval_print (exprs: expr list): string t =
     match exprs with
     | [] -> return []
     | e::es -> 
+      let* ofmt = lookup "OFMT" in
       let* v = eval_expr e in
+      let v = match v with
+        | VString s -> s
+        | VNum n -> 
+          let ofmt = string_of_value ofmt in
+          Printf.sprintf (Scanf.format_from_string ofmt "%.6g") n
+      in
       let* tail = inner es in
-      return ((string_of_value v) :: tail)
+      return (v :: tail)
   in
   let* elems = if exprs = []
     then

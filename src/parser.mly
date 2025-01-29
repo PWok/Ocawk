@@ -133,7 +133,8 @@ statement:
           | es, Write e -> PrintWrite(es, e)
           | es, Append e -> PrintAppend(es, e)
           }
-/*   | PRINT; LPAREN; es = separated_list(COMMA, expr); RPAREN { Print es } */ /* TODO fix shift reduce and add this */
+  /* | PRINT; LPAREN; es = separated_nonempty_list(COMMA, expr); RPAREN { Print es } */ /* TODO: fix shift/reduce with print ("ala") */
+  
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
   | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a = bracketed_actions; RBRACE { If(e1, a, []) }
   | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a1 = bracketed_actions; RBRACE; ELSE; a2 = action { If(e1, a1, a2) }
@@ -146,9 +147,9 @@ statement:
 
 print_body:
   | e = non_gt_expr {[e], Normal}
-  | e1=non_gt_expr; GT; e2=str_expr {([e1], Write e2)}
-  | e1=non_gt_expr; APPEND; e2=str_expr {([e1], Append e2)}
-  | e = non_gt_expr; COMMA; p=print_body { let (l, r) = p in (e::l, r)}
+  | e1 = non_gt_expr; GT; e2 = str_expr {([e1], Write e2)}
+  | e1 = non_gt_expr; APPEND; e2 = str_expr {([e1], Append e2)}
+  | e = non_gt_expr; COMMA; p = print_body { let (l, r) = p in (e::l, r)}
   ;
 
 variable:

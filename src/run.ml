@@ -5,16 +5,17 @@ open Values.EnvMonad
 let default_env =
     let value_env = 
       VarMap.empty        |> 
-      VarMap.add "FS"   (VString  " ")  |>
-      VarMap.add "RS"   (VString "\n")  |> 
-      VarMap.add "OFS"  (VString  " ")  |>
-      VarMap.add "ORS"  (VString "\n")  |> 
-      VarMap.add "NR"   (VNum 0.)       |>
-      VarMap.add "FNR"  (VNum 0.)       |>
-      VarMap.add "NF"   (VNum 0.)       |>
-      VarMap.add "OFMT" (VString "%.6g")|> (* FIXME: Currently unused. add this to printing nums *)
-      VarMap.add "FILENAME" (VString "") (* FIXME: Currently unused.*)
-      (* TODO: this are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
+      VarMap.add "FS"   (VString  " ")      |>
+      VarMap.add "RS"   (VString "\n")      |> 
+      VarMap.add "OFS"  (VString  " ")      |>
+      VarMap.add "ORS"  (VString "\n")      |> 
+      VarMap.add "NR"   (VNum 0.)           |>
+      VarMap.add "FNR"  (VNum 0.)           |>
+      VarMap.add "NF"   (VNum 0.)           |>
+      VarMap.add "CONVFMT" (VString "%.6g") |> (* FIXME: Currently unused. add this to converting nums to str *)
+      VarMap.add "OFMT" (VString "%.6g")    |>
+      VarMap.add "FILENAME" (VString "")
+      (* TODO: these are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
     in
     value_env, VarMap.empty
 

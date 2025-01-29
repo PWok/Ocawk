@@ -102,6 +102,8 @@ class TestBinops(TestCase):
 # TODO: add tests for loops and if and print
 # TODO: tests for print redirection to file
 
+# TODO: add test for running on multiple files
+# TODO: add tests for build in variables like NR FNR FILENAME etc.
 # TODO: tests for icrement decrement
 if __name__ == "__main__":
      unittest.main()

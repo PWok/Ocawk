@@ -19,7 +19,7 @@ type expr =
   | PreDec of string     (* --x *)
   | PostDec of string    (* x-- *)
   
-type stmt = (* TODO: add more statemnts eg. printf, switch, do-while etc. https://www.gnu.org/software/gawk/manual/html_node/Statements.html *)
+type stmt = (* TODO: add more statemnts eg. printf, switch etc. https://www.gnu.org/software/gawk/manual/html_node/Statements.html *)
   | Print  of expr list
   | PrintWrite of expr list * expr (* TODO: add pipes *)
   | PrintAppend of expr list * expr
