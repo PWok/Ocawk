@@ -5,6 +5,11 @@ type print_type =
   | Normal
   | Write of expr
   | Append of expr
+  
+let devar v = 
+  match v with
+  | Var x -> x
+  | _ -> failwith "this shouldn't ever happen... (parser devar)"
 
 %}
 
@@ -13,35 +18,50 @@ type print_type =
 %token <string> IDENT
 %token <string> STR
 %token <string> REGEX
-%token TIMES
-%token DIV
-%token PLUS
-%token MINUS
+
 %token LPAREN
 %token RPAREN
 %token LBRACE
 %token RBRACE
+
+%token INCREMENT
+%token DECREMENT
+
+%token TIMES
+%token DIV
+%token PLUS
+%token MINUS
+
 %token AND
 %token OR
+
 %token EQ
 %token LT
 %token GT
 %token LEQ
 %token GEQ
+
 %token NEQ
-%token IF
-%token ELSE
-%token COMMA
-%token PRINT
-%token BEGIN
-%token END
-%token SEMICOLON
-%token NEWLINE
-%token EOF
 %token REGMATCH
 %token NREGMATCH
 %token ASSIGN
+
+%token IF
+%token ELSE
+%token PRINT
+%token FOR
+%token WHILE
+%token DO
+
+%token BEGIN
+%token END
+
+%token COMMA
 %token APPEND
+%token SEMICOLON
+%token NEWLINE
+%token EOF
+
 
 %start <Ast.code> prog
 
@@ -55,6 +75,9 @@ type print_type =
 %left TIMES DIV
 
 %left CONCAT
+
+%nonassoc VAR
+%left INCREMENT DECREMENT
 
 %%
 
@@ -112,8 +135,11 @@ statement:
           }
 /*   | PRINT; LPAREN; es = separated_list(COMMA, expr); RPAREN { Print es } */ /* TODO fix shift reduce and add this */
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); e2 = bracketed_actions; RBRACE; { If(e1, e2, []) }
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); e2 = bracketed_actions; RBRACE; ELSE; e3 = action { If(e1, e2, e3) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a = bracketed_actions; RBRACE { If(e1, a, []) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a1 = bracketed_actions; RBRACE; ELSE; a2 = action { If(e1, a1, a2) }
+  | FOR; LPAREN; init=expr; SEMICOLON; cond=expr; SEMICOLON; incr=expr; RPAREN; a = action { For(init, cond, incr, a) }
+  | WHILE; LPAREN; e=expr; RPAREN; a = action { While(e, a) }
+  | DO; a = action ; WHILE ; LPAREN; e = expr; RPAREN { DoWhile(a, e) }
   | e = expr { ExprStmt e } 
   ;
 
@@ -125,13 +151,18 @@ print_body:
   | e = non_gt_expr; COMMA; p=print_body { let (l, r) = p in (e::l, r)}
   ;
 
+variable:
+  | x = IDENT { Var x}
 
 str_expr:
   | LPAREN; e = expr; RPAREN { e }
   | i = NUM { Num i }
   | s = STR { Str s }
-  | x = IDENT { Var x }
- 
+  | v = variable { v } %prec VAR
+  | INCREMENT; x = variable { PreInc (devar x) }
+  | x = variable; INCREMENT { PostInc (devar x) }
+  | DECREMENT; x = variable { PreDec (devar x) }
+  | x = variable; DECREMENT { PostDec (devar x) }
   ;
   
 expr:

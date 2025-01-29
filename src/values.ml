@@ -17,6 +17,9 @@ module EnvMonad : sig
   val assign : string -> value -> value t
   
   val view: 'a t -> env -> env * 'a
+  
+  val (let*) : 'a t -> ('a -> 'b t) -> 'b t
+  val (>>)  : 'a t -> 'b t -> 'b t
 end = struct
   
   
@@ -38,6 +41,9 @@ end = struct
     env, v
     
   let view m = m
+  
+  let (let*) = bind
+  let (>>) a b = bind a (fun _ -> b)
 end 
 
 

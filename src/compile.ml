@@ -1,10 +1,7 @@
 open Ast
 open Values
 
-
 open Values.EnvMonad
-let (let*) = EnvMonad.bind
-
 
 type compiled_stmt = env -> env * unit
 
@@ -67,7 +64,7 @@ let rec rebuild_fields (fields: string list) (i: int) : value t =
   | [] -> failwith "this shouldn't happen (Compile.rebuild_fields)"
   | [x] -> assign ("$" ^ string_of_int i) (VString x)
   | x::xs ->
-    let* _ = assign ("$" ^ string_of_int i) (VString x) in
+    assign ("$" ^ string_of_int i) (VString x) >>
     rebuild_fields xs (i+1)
     
 let rebuild_record id (v: value) : value t =
@@ -106,11 +103,23 @@ let rec eval_expr (e: expr ) : value t =
   | Assign(id, e) ->
     let* v = eval_expr e in
     let* v = assign id v in
-    if '$' = String.get id 0 (* TODO: if $0 is set the nrebuild all fields*)
+    if '$' = String.get id 0
       then rebuild_record id v
       else return v
-    
-    
+  | PreInc id -> 
+    let* v = lookup id in
+    assign id  (VNum ( float_of_value v +. 1.))
+  | PostInc id -> 
+    let* v = lookup id in
+    assign id  (VNum ( float_of_value v +. 1.)) >>
+    return v
+  | PreDec id -> 
+    let* v = lookup id in
+    assign id  (VNum ( float_of_value v -. 1.))
+  | PostDec id ->
+    let* v = lookup id in
+    assign id  (VNum ( float_of_value v -. 1.)) >>
+    return v
   
 let eval_trigger (cond: condition) : bool t =
   match cond with
@@ -126,8 +135,7 @@ let eval_trigger (cond: condition) : bool t =
     let* v = lookup "0#isEnd" in v |> bool_of_value |> return
 ;;
 
-
-let eval_print (exprs: expr list): _ t = 
+let eval_print (exprs: expr list): string t = 
   (* evaluate all the expressions, store them and print them. The value of OFS
   is whatever it is after ALL the evaluations (got this behaviour by testing awk) *)
   let rec inner (exprs: expr list) : string list t = 
@@ -161,8 +169,9 @@ let print_to_file e es flags =
     else Out_channel.open_gen flags 0o666 file_name
   in
   output_string file_descriptor (line ^ ors);
-  let* _ = assign ("0#" ^ file_name) (VFileDesc file_descriptor) in
+  assign ("0#" ^ file_name) (VFileDesc file_descriptor) >>
   return ()
+
   
 let rec eval_stmt (stmt: stmt) : unit t =
   match stmt with
@@ -175,24 +184,48 @@ let rec eval_stmt (stmt: stmt) : unit t =
   | If(p, t, f) ->
     let* v = eval_expr p in
     if v |> bool_of_value
-    then eval_actions t
-    else eval_actions f
+    then eval_action t
+    else eval_action f
   | ExprStmt e -> 
-    let* _ = eval_expr e in return ()
+    eval_expr e >> return ()
   | PrintWrite(es, e) ->
     let flags = [Out_channel.Open_wronly; Out_channel.Open_creat; Out_channel.Open_trunc; Open_text] in
     print_to_file e es flags
   | PrintAppend(es, e) ->
     let flags = [Out_channel.Open_append; Out_channel.Open_creat; Open_text] in
     print_to_file e es flags
-    
-and eval_actions (actions: stmt list) : unit t =
+  | For(init, cond, incr, body) ->
+    eval_expr init >>
+    eval_for cond incr body
+  | While(cond, body) -> eval_while cond body
+  | DoWhile(body, cond) ->
+    eval_action body >>
+    eval_while cond body
+  
+and eval_action (actions: stmt list) : unit t =
   match actions with
   | [] -> return ()
   | x::xs ->
-    let* _ = eval_stmt x in
-    eval_actions xs
+    eval_stmt x >>
+    eval_action xs
 
+and eval_for (cond: expr) (incr: expr) (body: stmt list) : unit t = 
+  let* p = eval_expr cond in
+  if bool_of_value p then
+    eval_action body >>
+    eval_expr incr >>
+    eval_for cond incr body
+  else
+    return ()
+    
+and eval_while (cond: expr) (body: stmt list) : unit t = 
+  let* p = eval_expr cond in
+  if bool_of_value p then
+    eval_action body >>
+    eval_while cond body
+  else
+    return ()
+  
     
 let rec check_triggers (triggers: condition list) : bool t =
   match triggers with
@@ -210,7 +243,7 @@ let eval_instruction (instr: instruction): unit t =
   let* is_trigged = check_triggers triggers in
   if (triggers = [] && not (is_begin |> bool_of_value) && not (is_end |> bool_of_value)) || is_trigged
   then 
-    eval_actions actions
+    eval_action actions
   else return ()
   
 let compile_code (code: code): compiled_stmt = fun env -> 

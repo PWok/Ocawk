@@ -36,6 +36,8 @@ rule read =
   | ">=" { GEQ }
   | "<" { LT }
   | ">" { GT }
+  | "++" { INCREMENT }
+  | "--" { DECREMENT }
   | "*" { TIMES }
   | "+" { PLUS }
   | "-" { MINUS }
@@ -48,6 +50,9 @@ rule read =
   | "}" { RBRACE }
   | "if" { IF }
   | "else" { ELSE }
+  | "for" { FOR }
+  | "while" { WHILE }
+  | "do" { DO }
   | "," { COMMA }
   | "BEGIN" { BEGIN }
   | "END" { END }

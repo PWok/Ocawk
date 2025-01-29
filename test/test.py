@@ -58,7 +58,7 @@ class TestBinops(TestCase):
         res = run(r"{print 14.3 < -12.6}", "./test/test_data/oneliner.txt")
         self.assertEqual(res.stdout, "0\n")
     
-    # NOTE: comparing nums with str should cast the num to str
+    # comparing nums with str should cast the num to str
     def test_num_str_lt(self):
         res = run(r"""{print 10 < "2.6"}""", "./test/test_data/oneliner.txt")
         self.assertEqual(res.stdout, "1\n")
@@ -77,7 +77,7 @@ class TestBinops(TestCase):
         res = run(r"{print (14.3 > -12.6)}", "./test/test_data/oneliner.txt")
         self.assertEqual(res.stdout, "1\n")
     
-    # NOTE: comparing nums with str should cast the num to str
+    # comparing nums with str should cast the num to str
     def test_num_str_gt(self):
         res = run(r"""{print (10 > "2.6")}""", "./test/test_data/oneliner.txt")
         self.assertEqual(res.stdout, "0\n")
@@ -98,5 +98,10 @@ class TestBinops(TestCase):
         
     # TODO: FIXME: add tests for regex matching
 
+
+# TODO: add tests for loops and if and print
+# TODO: tests for print redirection to file
+
+# TODO: tests for icrement decrement
 if __name__ == "__main__":
      unittest.main()
