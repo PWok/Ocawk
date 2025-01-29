@@ -53,8 +53,11 @@ let filedesc_of_value v =
 
 let string_of_value v = 
   match v with
-  | VNum n    -> string_of_float n
-  | VBool b   -> string_of_bool b
+  | VNum n    -> 
+    if Float.is_integer n 
+    then string_of_int @@ int_of_float n
+    else string_of_float n
+  | VBool b   -> if b then "1" else "0"
   | VString s -> s
   | VFileDesc _ -> failwith "this is absurd (casting of file descriptor)"
   

@@ -40,37 +40,39 @@ let update_env (env: env) (line: string) =
     in
   let env, _ = List.fold_left (fun (env, i) field -> VarMap.add ("$" ^ string_of_int i) (VString field) env, i+1) (env, 1) fields in
   env
-
-
-(* TODO refactor this to not use append, but a proper data structure *)
-let take_until_sep (sep: string) (file: In_channel.t) : string =
+  
+let take_until_sep (sep: string) (file: In_channel.t) : string option =
+  let concat q = 
+    Queue.fold (fun acc x -> acc^x) "" q
+  in
+  let rec inner (ending_buf: string Queue.t) =
+    match In_channel.input_char file with
+    | None -> sep
+    | Some chr ->
+      Queue.pop ending_buf |> ignore;
+      let chr = String.make 1 chr in
+      Queue.add chr ending_buf;
+      if concat ending_buf = sep
+        then chr
+        else chr ^ inner ending_buf
+  in
   try
-    let rec inner ending_buf =
-      match In_channel.input_char file with
-      | None -> sep
-      | Some chr ->
-        let chr = String.make 1 chr in
-        let ending_buf = List.tl ending_buf @ [chr] in
-        if String.concat "" ending_buf = sep
-          then chr
-          else chr ^ inner ending_buf
-    in 
-    let ending_buf = List.init (String.length sep) (fun _ -> input_char file |> String.make 1) in
-    if String.concat "" ending_buf = sep
-    then ""
+    let seq = Seq.init (String.length sep) (fun _ -> input_char file |> String.make 1) in
+    let ending_buf = Queue.of_seq seq in
+    if concat ending_buf = sep
+      then None
     else
+      let prefix = concat ending_buf in
       let s = inner ending_buf in
-      (String.concat "" ending_buf) ^ String.sub s 0 (String.length s - String.length sep)
-  with 
-  | End_of_file -> ""
+      Some(prefix ^ String.sub s 0 (String.length s - String.length sep))
+  with
+    | End_of_file -> None
+;;
 
 (* Lazely find next line *)
 let get_next_record (env: env) (file: In_channel.t) : string option  =
   let rs = get_value "RS" env |> string_of_value in
-  let record = take_until_sep rs file in
-  match record with
-    | "" -> None
-    | s -> Some s
+  take_until_sep rs file
 
 let rec main_loop env (file: In_channel.t) script =
   match get_next_record env file with

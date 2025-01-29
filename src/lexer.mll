@@ -18,7 +18,7 @@ let backslash_escapes =
 let white = [' ' '\t']+
 let digit = ['0'-'9']
 let letter = ['a'-'z' 'A'-'Z']
-let number = '-'? digit+
+let number = '-'? digit+ ('.' digit+)?
 let ident = (letter | '$') (letter | digit)*
 
 rule read =
