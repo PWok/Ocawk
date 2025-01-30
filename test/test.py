@@ -17,7 +17,13 @@ class TestVariableAssignment(TestCase):
     def test_custom_vars(self):
         res = run(r"BEGIN {foo = 17; print foo}", "./test/test_data/example.tsv")
         self.assertEqual(res.stdout, "17\n")
+
+class TestFieldOperator(TestCase):
+    def test_reference_expr(self):
+        res = run("""BEGIN {x = 1} {print $(++x); print x}""", "./test/test_data/oneliner.txt")
         
+        self.assertEqual(res.stdout, "ma\n2\n")
+      
     def test_field_modification(self):
         res = run(r"""BEGIN { FS="\t"; OFS="," } {$1=$1; print $0}""", "./test/test_data/example.tsv")
         

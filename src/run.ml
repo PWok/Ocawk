@@ -19,14 +19,12 @@ let default_env =
     in
     value_env, VarMap.empty
 
-    
-
-(* TODO: Move fields to use internal_value and make $ a operator *)
+  
 let remove_old_fields (env: env) : env = 
   let rec inner env i  : env =
     if i = 0
     then env 
-    else inner (VarMap.remove ("$"^string_of_int i) (fst env), snd env) (i-1)  
+    else inner (fst env, VarMap.remove ("$"^string_of_int i) (snd env)) (i-1)  
   in
   inner env (get_value "NF" env |> float_of_value |> int_of_float)
 
@@ -39,11 +37,13 @@ let update_env (env: env) (line: string) : env =
   let val_env = (fst env) |>
     VarMap.add "NR" (VNum (1. +. float_of_value (get_value "NR" env))) |>
     VarMap.add "FNR" (VNum (1. +. float_of_value (get_value "FNR" env))) |>
-    VarMap.add "NF" (VNum (float_of_int count)) |>
-    VarMap.add "$0" (VString line)
-    in
-  let val_env, _ = List.fold_left (fun (val_env, i) field -> VarMap.add ("$" ^ string_of_int i) (VString field) val_env, i+1) (val_env, 1) fields in
-  val_env, snd env
+    VarMap.add "NF" (VNum (float_of_int count))
+  in
+  let in_env = (snd env) |>
+    VarMap.add "$0" (IVString line)
+  in
+  let in_env, _ = List.fold_left (fun (in_env, i) field -> VarMap.add ("$" ^ string_of_int i) (IVString field) in_env, i+1) (in_env, 1) fields in
+  val_env, in_env
   
 let take_until_sep (sep: string) (file: In_channel.t) : string option =
   let concat q = 

@@ -19,7 +19,7 @@ let white = [' ' '\t']+
 let digit = ['0'-'9']
 let letter = ['a'-'z' 'A'-'Z']
 let number = '-'? digit+ ('.' digit+)?
-let ident = (letter | '$') (letter | digit)*
+let ident = (letter) (letter | digit)*
 
 rule read =
   parse
@@ -31,7 +31,8 @@ rule read =
   | "||" { OR }
   | "==" { EQ }
   | "!=" { NEQ }
-  (* | "!"  { NOT } *)
+  (* | "!"  { NOT } *) (* TODO *)
+  | "$" { FIELDREF }
   | "<=" { LEQ }
   | ">=" { GEQ }
   | "<" { LT }

@@ -44,6 +44,8 @@ let devar v =
 %token NEQ
 %token REGMATCH
 %token NREGMATCH
+
+%token FIELDREF
 %token ASSIGN
 
 %token IF
@@ -154,13 +156,15 @@ print_body:
   ;
 
 variable:
-  | x = IDENT { Var x}
+  | x = IDENT { Var x }
+  | FIELDREF; n = NUM { FieldRef(Num n) }
+  | FIELDREF; LPAREN; e=expr; RPAREN { FieldRef e }
 
 str_expr:
   | LPAREN; e = expr; RPAREN { e }
   | i = NUM { Num i }
   | s = STR { Str s }
-  | v = variable { v } %prec VAR
+  | v = variable { VarE v } %prec VAR
   | INCREMENT; x = variable { PreInc (devar x) }
   | x = variable; INCREMENT { PostInc (devar x) }
   | DECREMENT; x = variable { PreDec (devar x) }
@@ -186,7 +190,7 @@ expr:
   | e1 = expr; REGMATCH; e2 = expr { Binop(RegMatch, e1, e2) }
   | e1 = expr; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
   | e1 = expr; NREGMATCH; e2 = expr { Binop(NRegMatch, e1, e2) }
-  | id = IDENT; ASSIGN; e = expr {Assign(id, e)}
+  | v = variable; ASSIGN; e = expr {Assign(v, e)}
   ;
   
 non_gt_expr:
@@ -207,5 +211,5 @@ non_gt_expr:
   | e1 = non_gt_expr; REGMATCH; e2 = non_gt_expr { Binop(RegMatch, e1, e2) }
   | e1 = non_gt_expr; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
   | e1 = non_gt_expr; NREGMATCH; e2 = non_gt_expr { Binop(NRegMatch, e1, e2) }
-  | id = IDENT; ASSIGN; e = non_gt_expr {Assign(id, e)}
+  | v = variable; ASSIGN; e = non_gt_expr {Assign(v, e)}
   ;

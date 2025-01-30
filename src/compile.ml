@@ -51,43 +51,38 @@ let eval_binop bop v1 v2 =
 let rec rebuild_line (sep: string) (n: int) = 
   if n = 1
   then
-    let* f = lookup "$1" in
-    f |> string_of_value |> return
+    let* f = lookup_internal "$1" in
+    f |> string_of_internal_value_option |> return
   else
-    let* field = lookup ("$" ^ string_of_int n) in
-    let field = string_of_value field in
+    let* field = lookup_internal ("$" ^ string_of_int n) in
+    let field = string_of_internal_value_option field in
     let* rest = rebuild_line sep (n-1) in
     return (rest ^ sep ^ field)
 
-let rec rebuild_fields (fields: string list) (i: int) : value t =
+let rec rebuild_fields (fields: string list) (i: int) =
   match fields with
   | [] -> failwith "this shouldn't happen (Compile.rebuild_fields)"
-  | [x] -> assign ("$" ^ string_of_int i) (VString x)
+  | [x] -> assign_internal ("$" ^ string_of_int i) (IVString x)
   | x::xs ->
-    assign ("$" ^ string_of_int i) (VString x) >>
+    assign_internal ("$" ^ string_of_int i) (IVString x) >>
     rebuild_fields xs (i+1)
     
-let rebuild_record id (v: value) : value t =
-  let n = int_of_string_opt (String.sub id 1 ((String.length id) - 1)) in
+let rebuild_record n (line: string) =
   match n with
-  | None -> return v
-  | Some 0 ->
+  | 0 ->
     let* fs = lookup "FS" in
     let fs = string_of_value fs in
-    let line = string_of_value v in
     let fields = Str.split (Str.regexp fs) line in
     let fields = if fields = [""] then [] else fields in
     let count = List.length fields in
-    let* m = assign "NF" (VNum (float_of_int count)) in
-    if fields <> []
-      then rebuild_fields fields 1
-      else return m
-  | Some n ->
+    assign "NF" (VNum (float_of_int count)) >>
+    rebuild_fields fields 1
+  | n ->
     let* nf = lookup "NF" in
     let* sep = lookup "OFS" in
     let n = max n (nf |> float_of_value |> int_of_float) in
     let* line = rebuild_line (string_of_value sep) n in
-    assign "$0" (VString line)
+    assign_internal "$0" (IVString line)
     
     
       
@@ -95,17 +90,25 @@ let rec eval_expr (e: expr ) : value t =
    match e with
   | Num n  -> VNum n |> return
   | Str s  -> VString s |> return
-  | Var ident -> lookup ident
+  | VarE (Var ident) -> lookup ident
+  | VarE (FieldRef e) ->
+    let* v = eval_expr e in
+    let* res = lookup_internal ("$" ^ string_of_value v) in
+    return @@ VString (string_of_internal_value_option res)
   | Binop(bop, e1, e2) ->
     let* v1 = eval_expr e1 in
     let* v2 = eval_expr e2 in
     eval_binop bop v1 v2 |> return
-  | Assign(id, e) ->
+  | Assign(Var id, e) ->
     let* v = eval_expr e in
     let* v = assign id v in
-    if '$' = String.get id 0
-      then rebuild_record id v
-      else return v
+    return v
+  | Assign(FieldRef e1, e2) ->
+    let* v = eval_expr e2 in (* First evaluate the value -- this is what awk does *)
+    let v = string_of_value v in
+    let* n = eval_expr e1 in
+    rebuild_record (int_of_float @@ float_of_value n) v >>
+    return (VString v)
   | PreInc id -> 
     let* v = lookup id in
     assign id  (VNum ( float_of_value v +. 1.))
@@ -124,8 +127,8 @@ let rec eval_expr (e: expr ) : value t =
 let eval_trigger (cond: condition) : bool t =
   match cond with
   | Regex r -> 
-    let* record = lookup "$0" in
-    let v = regex_match (string_of_value record) r in
+    let* record = lookup_internal "$0" in
+    let v = regex_match (string_of_internal_value_option record) r in
     let* p1 = lookup_internal "isBegin" in
     let* p2 = lookup_internal "isEnd" in 
     (v && (p1 |> bool_of_internal_value_option |> not) && (p2 |> bool_of_internal_value_option |> not)) |> return 
@@ -166,8 +169,8 @@ let eval_print (exprs: expr list): string t =
   in
   let* elems = if exprs = []
     then
-      let* elem = lookup "$0" in
-      return [elem |> string_of_value]
+      let* elem = lookup_internal "$0" in
+      return [elem |> string_of_internal_value_option]
     else inner exprs
   in 
   let* ofs = lookup "OFS" in

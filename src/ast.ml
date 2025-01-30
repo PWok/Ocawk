@@ -5,19 +5,21 @@
 (* https://www.gnu.org/software/gawk/manual/html_node/Arithmetic-Ops.html *)
 type bop = Mult | Div | Add | Sub | Eq | Lt | Le | Gt | Ge | Neq
           | Land | Lor | RegMatch | NRegMatch | Concat
-          
-(* FIXME: $0 to nie zmienna. $ to operator `field reference`. Meaning that $(i++) is valid... *)
-          
+
+
 type expr =
+  | VarE of variable
   | Num   of float
   | Str   of string
   | Binop of bop * expr * expr
-  | Var   of string
-  | Assign of string * expr
+  | Assign of variable * expr
   | PreInc of string     (* ++x *)
   | PostInc of string    (* x++ *)
   | PreDec of string     (* --x *)
   | PostDec of string    (* x-- *)
+and variable =
+  | Var of string
+  | FieldRef of expr
   
 type stmt = (* TODO: add more statemnts eg. printf, switch etc. https://www.gnu.org/software/gawk/manual/html_node/Statements.html *)
   | Print  of expr list

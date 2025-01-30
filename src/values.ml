@@ -91,7 +91,12 @@ let bool_of_internal_value_option iv =
   match iv with
   | Some (IVBool b) -> b
   | _ -> raise (InternalValueError "bool of internal failed")
-    
+
+let string_of_internal_value_option iv =
+  match iv with
+  | None -> ""
+  | Some (IVString s) -> s
+  | _ -> raise (InternalValueError "string_of_internal_value_option" )
 let float_of_bool b = if b then 1. else 0.
   
 let get_value ident env = ((EnvMonad.lookup ident |> EnvMonad.view) env) |> snd
