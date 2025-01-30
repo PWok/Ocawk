@@ -68,7 +68,7 @@ let take_until_sep (sep: string) (file: In_channel.t) : string option =
     else
       let prefix = concat ending_buf in
       let s = inner ending_buf in
-      Some(prefix ^ String.sub s 0 (String.length s - String.length sep))
+      Some(String.sub (prefix ^ s) 0 (String.length s))
   with
     | End_of_file -> None
 ;;
@@ -98,7 +98,31 @@ let run_end (env: env) (script: env -> env * unit): env =
   let env = fst (script env) in
   env
 
-let run (env: env) (script: env -> env * unit) (file: In_channel.t): env =
+let run (env: env) (script: env -> env * unit) (file: In_channel.t) : env =
   let env = main_loop env file script in
   env
-  
+
+let run_repl (env: env) (script: env -> env * unit) : env =
+  let sep = string_of_value @@ get_value "RS" env in
+  let rec loop env xs = 
+    match xs with
+    | [] -> env, ""
+    | [x; ""] ->
+      let env = fst @@ script (update_env env x) in
+      env, ""
+    | [x] -> env, x
+    | x::xs -> 
+      let env = fst @@ script (update_env env x) in
+      loop env xs
+  in
+  let rec inner env (ending: string) = 
+    let line = read_line () in
+    let records = Str.split_delim (Str.regexp sep) line in
+    let records = match records with
+      | [] -> [ending]
+      | x::xs -> (ending ^ x) :: xs
+    in
+    let env, ending = loop env records in
+    inner env ending
+  in
+  inner env ""

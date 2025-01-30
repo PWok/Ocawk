@@ -109,6 +109,7 @@ pattern: /* TODO: allow ORing and ANDing and NOTing patterns */
   | END       { End }
   | r = REGEX { Regex r }
   /* | e = expr { Expr e } */ /* TODO -- conflict with concat */
+  | LPAREN; e = expr; RPAREN  { Expr e }
   ; 
 
   
@@ -138,7 +139,7 @@ statement:
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
   | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a = bracketed_actions; RBRACE { If(e1, a, []) }
   | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a1 = bracketed_actions; RBRACE; ELSE; a2 = action { If(e1, a1, a2) }
-  | FOR; LPAREN; init=expr; SEMICOLON; cond=expr; SEMICOLON; incr=expr; RPAREN; a = action { For(init, cond, incr, a) }
+  | FOR; LPAREN; init=expr; SEMICOLON; cond=expr; SEMICOLON; incr=expr; RPAREN; a = action { For(init, cond, incr, a) } /* FIXME: expressions can be omitted, when so they are treated as true */
   | WHILE; LPAREN; e=expr; RPAREN; a = action { While(e, a) }
   | DO; a = action ; WHILE ; LPAREN; e = expr; RPAREN { DoWhile(a, e) }
   | e = expr { ExprStmt e } 

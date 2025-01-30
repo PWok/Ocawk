@@ -34,7 +34,7 @@ let anon_fun arg =
   | Some _ ->
     input_file_paths := arg::!input_file_paths
 
-(* TODO: add running withot text file as repl like real awk does *)
+    
 let () =
   Arg.parse speclist anon_fun usage_msg;
   try
@@ -54,9 +54,16 @@ let () =
       let file = In_channel.open_text filepath in
       let v = Run.run env compiled_code file in
       In_channel.close file; v
+    in
+    let env = if List.is_empty !input_file_paths
+    then
+      let env = fst @@ view (assign "FILENAME" (VString "stdin")) env in
+      Run.run_repl env compiled_code
+    else
+      let env = List.fold_right runner !input_file_paths env in
+      let env = Run.run_end env compiled_code in
+      env
     in 
-    let env = List.fold_right runner !input_file_paths env in
-    let env = Run.run_end env compiled_code in 
     (* Close all open file descriptors: *)
     let internal_env = snd env in
     VarMap.iter (fun _ v -> match v with | IVFileDescriptor file -> Out_channel.close file | _ -> ()) internal_env;
