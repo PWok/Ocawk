@@ -35,8 +35,8 @@ let eval_binop bop v1 v2 =
   | Gt,   v1, v2 -> VNum (float_of_bool (string_of_value v1 > string_of_value v2))
   | Ge,   VNum v1,  VNum v2 -> VNum (float_of_bool (v1 >= v2))
   | Ge,   v1, v2 -> VNum (float_of_bool (string_of_value v1 >= string_of_value v2))
-  | Neq,  VNum v1,  VNum v2 -> VNum (float_of_bool (v1 != v2))
-  | Neq,  v1, v2 -> VNum (float_of_bool (string_of_value v1 != string_of_value v2))
+  | Neq,  VNum v1,  VNum v2 -> VNum (float_of_bool (v1 <> v2))
+  | Neq,  v1, v2 -> VNum (float_of_bool (string_of_value v1 <> string_of_value v2))
   | Land, v1, v2 -> VNum (float_of_bool (bool_of_value v1 && bool_of_value v2))
   | Lor,  v1, v2 -> VNum (float_of_bool (bool_of_value v1 || bool_of_value v2))
   | RegMatch, v1, v2 ->
@@ -79,7 +79,7 @@ let rebuild_record id (v: value) : value t =
     let fields = if fields = [""] then [] else fields in
     let count = List.length fields in
     let* m = assign "NF" (VNum (float_of_int count)) in
-    if fields != []
+    if fields <> []
       then rebuild_fields fields 1
       else return m
   | Some n ->
@@ -125,10 +125,20 @@ let eval_trigger (cond: condition) : bool t =
   match cond with
   | Regex r -> 
     let* record = lookup "$0" in
-    regex_match (string_of_value record) r |> return
+    let v = regex_match (string_of_value record) r in
+    let* p1 = lookup_internal "isBegin" in
+    let* p2 = lookup_internal "isEnd" in 
+    (v && (p1 |> bool_of_internal_value_option |> not) && (p2 |> bool_of_internal_value_option |> not)) |> return 
   | Expr e  -> 
-    let* v = eval_expr e in 
-    v |> bool_of_value |> return (* Ignore enviroment modification in trigger evaluation *)
+    let* p1 = lookup_internal "isBegin" in
+    let* p2 = lookup_internal "isEnd" in
+    (* If begin or end dont evaluate v *)
+    if (p1 |> bool_of_internal_value_option) || (p2 |> bool_of_internal_value_option)
+    then
+      return false
+    else
+      let* v = eval_expr e in 
+      v |> bool_of_value |> return
   | Begin   -> 
     let* v = lookup_internal "isBegin" in v |> bool_of_internal_value_option |> return
   | End     -> 

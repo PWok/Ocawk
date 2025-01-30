@@ -72,8 +72,12 @@ let string_of_value v =
   
 let bool_of_value v = 
   match v with
-  | VNum n    -> n > 0.
-  | VString s -> s = ""
+  | VNum n    ->
+    n <> 0.
+  | VString s ->
+    match float_of_string_opt s with
+    | None -> s <> ""
+    | Some v -> v <> 0.0
   
 let float_of_value v =
   match v with
