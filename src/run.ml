@@ -102,6 +102,7 @@ let run_repl (env: env) (script: env -> env * unit) : env =
   in
   let rec inner env (ending: string) = 
     let line = read_line () in
+    let line = line ^ "\n" in
     let records = Str.split_delim (Str.regexp sep) line in
     let records = match records with
       | [] -> [ending]
