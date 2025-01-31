@@ -104,6 +104,11 @@ class TestBinops(TestCase):
         
     # TODO: FIXME: add tests for regex matching
 
+class TestOperatorPrecedence(TestCase):
+    
+    def test_concat_assign(self):
+        res = run(r"""{print x = 1 2; print x}""", "./test/test_data/oneliner.txt")
+        self.assertEqual(res.stdout, "12\n12\n")
 
 # TODO: add tests for loops and if and print
 # TODO: tests for print redirection to file

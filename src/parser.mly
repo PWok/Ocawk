@@ -9,7 +9,7 @@ type print_type =
 let devar v = 
   match v with
   | Var x -> x
-  | _ -> failwith "this shouldn't ever happen... (parser devar)"
+  | _ -> failwith "this shouldn't (parser devar). Check your code for syntax errors (Increment/Decrement/function call of not identifiers)"
 
 %}
 
@@ -61,16 +61,11 @@ let devar v =
 %token COMMA
 %token APPEND
 %token SEMICOLON
-%token NEWLINE
 %token EOF
 
 
 %start <Ast.code> prog
 
-
-%right ASSIGN
-
-%right CONCAT
 
 %nonassoc AND OR
 %nonassoc REGMATCH NREGMATCH
@@ -89,45 +84,37 @@ let devar v =
 prog:
   | e = instructions; EOF { e }
   ;
-  
-seperator:
-  | NEWLINE   {}
-  | SEMICOLON {}
 
 instructions:
-  | i = instruction { [i] }
-  | i = instruction; list(NEWLINE); is = instructions { 
-        match i, is with
-        | (p, []), ([], a)::xs -> (p, a) :: xs
-        | (p, []), xs -> (p, [ Print [] ]) :: xs
-        | _ -> i::is     
+  | p = pattern { [p, []] }
+  | LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE { [Always, a] }
+  | p = pattern; is = instructions { 
+        match p, is with
+        |      _ , (Always,  a)::xs -> (p, a) :: xs
+        | Expr e1, (Expr e2, a)::xs -> (Expr(Binop(Concat, e1, e2)), a) :: xs
+        |      _ ,               xs -> (p, [ Print [] ]) :: xs 
     }
+  | LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE; is = instructions { (Always, a) :: is }
   ;
 
-instruction: 
-  | LBRACE; list(seperator); a = bracketed_actions; RBRACE { [], a }
-  | p = pattern { [p], []}
-  ;
   
 pattern: /* TODO: allow ORing and ANDing and NOTing patterns */
   | BEGIN     { Begin }
   | END       { End }
   | r = REGEX { Regex r }
-  /* | e = expr { Expr e } */ /* TODO -- conflict with concat */
-  | LPAREN; e = expr; RPAREN  { Expr e }
+  | e = expr1 { Expr e }
   ; 
-
   
 action:
   | s = statement { [s] }
   | LBRACE; RBRACE { [] }
-  | LBRACE; list(seperator); a = bracketed_actions; RBRACE { a }
+  | LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE { a }
   ;
 
 bracketed_actions:
   | s = statement { [s] }
-  | s = statement; nonempty_list(seperator); a=bracketed_actions { s::a }
-  | s = statement; nonempty_list(seperator) { [s] }
+  | s = statement; nonempty_list(SEMICOLON); a=bracketed_actions { s::a }
+  | s = statement; nonempty_list(SEMICOLON) { [s] }
   ;
   
 statement:
@@ -142,8 +129,8 @@ statement:
   /* | PRINT; LPAREN; es = separated_nonempty_list(COMMA, expr); RPAREN { Print es } */ /* TODO: fix shift/reduce with print ("ala") */
   
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a = bracketed_actions; RBRACE { If(e1, a, []) }
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(seperator); a1 = bracketed_actions; RBRACE; ELSE; a2 = action { If(e1, a1, a2) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE { If(e1, a, []) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(SEMICOLON); a1 = bracketed_actions; RBRACE; ELSE; a2 = action { If(e1, a1, a2) }
   | FOR; LPAREN; init=expr; SEMICOLON; cond=expr; SEMICOLON; incr=expr; RPAREN; a = action { For(init, cond, incr, a) } /* FIXME: expressions can be omitted, when so they are treated as true */
   | WHILE; LPAREN; e=expr; RPAREN; a = action { While(e, a) }
   | DO; a = action ; WHILE ; LPAREN; e = expr; RPAREN { DoWhile(a, e) }
@@ -173,51 +160,57 @@ base_expr:
   | v = variable; LPAREN; es = separated_list(COMMA, expr); RPAREN { FunctionCall(devar v, es) } /* FIXME: disallow non-built-in functions with space */
   | INCREMENT; x = variable { PreInc (devar x) }
   | x = variable; INCREMENT { PostInc (devar x) }
-  | DECREMENT; x = variable { PreDec (devar x) }
+  | DECREMENT; x = variable { PreDec (devar x) } /* FIXME it should be possible to apply increment/decrement to fields/records  */
   | x = variable; DECREMENT { PostDec (devar x) }
   ;
   
 expr:
-  | e1 = expr; GT; e2 = expr { Binop(Gt, e1, e2) }
-  | e = base_expr { e }
-  | e1 = base_expr; e2 = expr { Binop(Concat, e1, e2) } %prec CONCAT /* FIXME: is this correct? test '{print 1 + 2 "3"}'. Change non_gt_expr too. */
-  | e1 = expr; PLUS; e2 = expr { Binop(Add, e1, e2) }
-  | e1 = expr; MINUS; e2 = expr { Binop(Sub, e1, e2) }
-  | e1 = expr; DIV; e2 = expr { Binop(Div, e1, e2) }
-  | e1 = expr; TIMES; e2 = expr { Binop(Mult, e1, e2) }
-  | e1 = expr; EQ; e2 = expr { Binop(Eq, e1, e2) }
-  | e1 = expr; LT; e2 = expr { Binop(Lt, e1, e2) }
-  | e1 = expr; LEQ; e2 = expr { Binop(Le, e1, e2) }
-  | e1 = expr; GEQ; e2 = expr { Binop(Ge, e1, e2) }
-  | e1 = expr; NEQ; e2 = expr { Binop(Neq, e1, e2) }
-  | e1 = expr; AND; e2 = expr { Binop(Land, e1, e2) }
-  | e1 = expr; OR; e2 = expr { Binop(Lor, e1, e2) }
-  | e1 = expr; REGMATCH; r = REGEX { Binop(RegMatch, e1, Str r) }
-  | e1 = expr; REGMATCH; e2 = expr { Binop(RegMatch, e1, e2) }
-  | e1 = expr; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
-  | e1 = expr; NREGMATCH; e2 = expr { Binop(NRegMatch, e1, e2) }
   | v = variable; ASSIGN; e = expr {Assign(v, e)}
+  | e1 = expr1; e2 = expr { Binop(Concat, e1, e2) }
+  | e = expr1 { e }
+  ;
+  
+expr1:
+  | e1 = expr1; GT; e2 = expr1 { Binop(Gt, e1, e2) }
+  | e = base_expr { e }
+  | e1 = expr1; PLUS; e2 = expr1 { Binop(Add, e1, e2) }
+  | e1 = expr1; MINUS; e2 = expr1 { Binop(Sub, e1, e2) }
+  | e1 = expr1; DIV; e2 = expr1 { Binop(Div, e1, e2) }
+  | e1 = expr1; TIMES; e2 = expr1 { Binop(Mult, e1, e2) }
+  | e1 = expr1; EQ; e2 = expr1 { Binop(Eq, e1, e2) }
+  | e1 = expr1; LT; e2 = expr1 { Binop(Lt, e1, e2) }
+  | e1 = expr1; LEQ; e2 = expr1 { Binop(Le, e1, e2) }
+  | e1 = expr1; GEQ; e2 = expr1 { Binop(Ge, e1, e2) }
+  | e1 = expr1; NEQ; e2 = expr1 { Binop(Neq, e1, e2) }
+  | e1 = expr1; AND; e2 = expr1 { Binop(Land, e1, e2) }
+  | e1 = expr1; OR; e2 = expr1 { Binop(Lor, e1, e2) }
+  | e1 = expr1; REGMATCH; r = REGEX { Binop(RegMatch, e1, Str r) }
+  | e1 = expr1; REGMATCH; e2 = expr1 { Binop(RegMatch, e1, e2) }
+  | e1 = expr1; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
+  | e1 = expr1; NREGMATCH; e2 = expr1 { Binop(NRegMatch, e1, e2) }
   ;
   
 non_gt_expr:
-  | e = base_expr { e }
-  | e1 = base_expr; e2 = non_gt_expr { Binop(Concat, e1, e2) } %prec CONCAT 
-  | e1 = non_gt_expr; PLUS; e2 = non_gt_expr { Binop(Add, e1, e2) }
-  | e1 = non_gt_expr; MINUS; e2 = non_gt_expr { Binop(Sub, e1, e2) }
-  | e1 = non_gt_expr; DIV; e2 = non_gt_expr { Binop(Div, e1, e2) }
-  | e1 = non_gt_expr; TIMES; e2 = non_gt_expr { Binop(Mult, e1, e2) }
-  | e1 = non_gt_expr; EQ; e2 = non_gt_expr { Binop(Eq, e1, e2) }
-  | e1 = non_gt_expr; LT; e2 = non_gt_expr { Binop(Lt, e1, e2) }
-  | e1 = non_gt_expr; LEQ; e2 = non_gt_expr { Binop(Le, e1, e2) }
-  | e1 = non_gt_expr; GEQ; e2 = non_gt_expr { Binop(Ge, e1, e2) }
-  | e1 = non_gt_expr; NEQ; e2 = non_gt_expr { Binop(Neq, e1, e2) }
-  | e1 = non_gt_expr; AND; e2 = non_gt_expr { Binop(Land, e1, e2) }
-  | e1 = non_gt_expr; OR; e2 = non_gt_expr { Binop(Lor, e1, e2) }
-  | e1 = non_gt_expr; REGMATCH; r = REGEX { Binop(RegMatch, e1, Str r) }
-  | e1 = non_gt_expr; REGMATCH; e2 = non_gt_expr { Binop(RegMatch, e1, e2) }
-  | e1 = non_gt_expr; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
-  | e1 = non_gt_expr; NREGMATCH; e2 = non_gt_expr { Binop(NRegMatch, e1, e2) }
   | v = variable; ASSIGN; e = non_gt_expr {Assign(v, e)}
+  | e1 = non_gt_expr1; e2 = non_gt_expr { Binop(Concat, e1, e2) }
+  | e = non_gt_expr1 { e }
   ;
-
-
+  
+non_gt_expr1:
+  | e = base_expr { e }
+  | e1 = non_gt_expr1; PLUS; e2 = non_gt_expr1 { Binop(Add, e1, e2) }
+  | e1 = non_gt_expr1; MINUS; e2 = non_gt_expr1 { Binop(Sub, e1, e2) }
+  | e1 = non_gt_expr1; DIV; e2 = non_gt_expr1 { Binop(Div, e1, e2) }
+  | e1 = non_gt_expr1; TIMES; e2 = non_gt_expr1 { Binop(Mult, e1, e2) }
+  | e1 = non_gt_expr1; EQ; e2 = non_gt_expr1 { Binop(Eq, e1, e2) }
+  | e1 = non_gt_expr1; LT; e2 = non_gt_expr1 { Binop(Lt, e1, e2) }
+  | e1 = non_gt_expr1; LEQ; e2 = non_gt_expr1 { Binop(Le, e1, e2) }
+  | e1 = non_gt_expr1; GEQ; e2 = non_gt_expr1 { Binop(Ge, e1, e2) }
+  | e1 = non_gt_expr1; NEQ; e2 = non_gt_expr1 { Binop(Neq, e1, e2) }
+  | e1 = non_gt_expr1; AND; e2 = non_gt_expr1 { Binop(Land, e1, e2) }
+  | e1 = non_gt_expr1; OR; e2 = non_gt_expr1 { Binop(Lor, e1, e2) }
+  | e1 = non_gt_expr1; REGMATCH; r = REGEX { Binop(RegMatch, e1, Str r) }
+  | e1 = non_gt_expr1; REGMATCH; e2 = non_gt_expr1 { Binop(RegMatch, e1, e2) }
+  | e1 = non_gt_expr1; NREGMATCH; r = REGEX { Binop(NRegMatch, e1, Str r) }
+  | e1 = non_gt_expr1; NREGMATCH; e2 = non_gt_expr1 { Binop(NRegMatch, e1, e2) }
+  ;

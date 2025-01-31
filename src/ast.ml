@@ -35,12 +35,13 @@ type stmt = (* TODO: add more statemnts eg. printf, switch etc. https://www.gnu.
   (* TODO: add close function *)
         
 type condition =
+  | Always
   | Regex of string
   | Expr  of expr
   | Begin
   | End
 
 
-type instruction = condition list * stmt list
+type instruction = condition * stmt list
 
 type code = instruction list

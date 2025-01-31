@@ -137,6 +137,10 @@ and eval_expr_list es =
   
 let eval_trigger (cond: condition) : bool t =
   match cond with
+  | Always ->
+    let* p1 = lookup_internal "isBegin" in
+    let* p2 = lookup_internal "isEnd" in 
+    return @@ not (bool_of_internal_value_option p1 || bool_of_internal_value_option p2)
   | Regex r -> 
     let* record = lookup_internal "$0" in
     let v = regex_match (string_of_internal_value_option record) r in
@@ -259,22 +263,12 @@ and eval_while (cond: expr) (body: stmt list) : unit t =
   else
     return ()
   
-    
-let rec check_triggers (triggers: condition list) : bool t =
-  match triggers with
-  | [] -> return false
-  | x :: xs -> 
-    let* v = eval_trigger x in
-    if v
-      then return true
-      else check_triggers xs 
+  
     
 let eval_instruction (instr: instruction): unit t = 
-  let triggers, actions = instr in 
-  let* is_begin = lookup_internal "isBegin" in
-  let* is_end = lookup_internal "isEnd" in
-  let* is_trigged = check_triggers triggers in
-  if (triggers = [] && not (is_begin |> bool_of_internal_value_option) && not (is_end |> bool_of_internal_value_option)) || is_trigged
+  let trigger, actions = instr in
+  let* is_trigged = eval_trigger trigger in
+  if is_trigged
   then 
     eval_action actions
   else return ()

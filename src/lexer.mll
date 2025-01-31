@@ -15,7 +15,7 @@ let char_for_backslash = function
 let backslash_escapes =
     ['\\' '\'' '"' 'n' 't' 'b' 'r' ' ']
 
-let white = [' ' '\t']+
+let white = [' ' '\t' '\n']+
 let digit = ['0'-'9']
 let letter = ['a'-'z' 'A'-'Z']
 let number = '-'? digit+ ('.' digit+)?
@@ -23,7 +23,6 @@ let ident = (letter) (letter | digit)*
 
 rule read =
   parse
-  | "\n" { NEWLINE }
   | ";"  { SEMICOLON }
   | white { read lexbuf }
   | ">>" { APPEND }
