@@ -1,30 +1,15 @@
 open Values
-
 open Values.EnvMonad
 
-let default_env =
-    let value_env = 
-      VarMap.empty        |> 
-      VarMap.add "FS"   (VString  " ")      |>
-      VarMap.add "RS"   (VString "\n")      |> 
-      VarMap.add "OFS"  (VString  " ")      |>
-      VarMap.add "ORS"  (VString "\n")      |> 
-      VarMap.add "NR"   (VNum 0.)           |>
-      VarMap.add "FNR"  (VNum 0.)           |>
-      VarMap.add "NF"   (VNum 0.)           |>
-      VarMap.add "CONVFMT" (VString "%.6g") |> (* FIXME: Currently unused. add this to converting nums to str *)
-      VarMap.add "OFMT" (VString "%.6g")    |>
-      VarMap.add "FILENAME" (VString "")
-      (* TODO: these are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
-    in
-    value_env, VarMap.empty
+
+let default_env = Defaults.value_env, Defaults.internal_env
 
   
 let remove_old_fields (env: env) : env = 
   let rec inner env i  : env =
     if i = 0
     then env 
-    else inner (fst env, VarMap.remove ("$"^string_of_int i) (snd env)) (i-1)  
+    else inner (fst env, StrMap.remove ("$"^string_of_int i) (snd env)) (i-1)  
   in
   inner env (get_value "NF" env |> float_of_value |> int_of_float)
 
@@ -35,14 +20,14 @@ let update_env (env: env) (line: string) : env =
   let count = List.length fields in
   let env = remove_old_fields env in
   let val_env = (fst env) |>
-    VarMap.add "NR" (VNum (1. +. float_of_value (get_value "NR" env))) |>
-    VarMap.add "FNR" (VNum (1. +. float_of_value (get_value "FNR" env))) |>
-    VarMap.add "NF" (VNum (float_of_int count))
+    StrMap.add "NR" (VNum (1. +. float_of_value (get_value "NR" env))) |>
+    StrMap.add "FNR" (VNum (1. +. float_of_value (get_value "FNR" env))) |>
+    StrMap.add "NF" (VNum (float_of_int count))
   in
   let in_env = (snd env) |>
-    VarMap.add "$0" (IVString line)
+    StrMap.add "$0" (IVString line)
   in
-  let in_env, _ = List.fold_left (fun (in_env, i) field -> VarMap.add ("$" ^ string_of_int i) (IVString field) in_env, i+1) (in_env, 1) fields in
+  let in_env, _ = List.fold_left (fun (in_env, i) field -> StrMap.add ("$" ^ string_of_int i) (IVString field) in_env, i+1) (in_env, 1) fields in
   val_env, in_env
   
 let take_until_sep (sep: string) (file: In_channel.t) : string option =

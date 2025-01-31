@@ -17,6 +17,7 @@ type expr =
   | PostInc of string    (* x++ *)
   | PreDec of string     (* --x *)
   | PostDec of string    (* x-- *)
+  | FunctionCall of string * expr list
 and variable =
   | Var of string
   | FieldRef of expr

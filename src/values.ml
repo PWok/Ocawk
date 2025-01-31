@@ -1,20 +1,21 @@
+open Exceptions
 
-type value = 
-| VNum of float
-| VString of string
-
-type internal_value =
-| IVBool of bool
-| IVString of string
-| IVFileDescriptor of Out_channel.t
-
-module VarMap = Map.Make(String)
-type env = value VarMap.t * internal_value VarMap.t
-
-exception InternalValueError of string
+module StrMap = Map.Make(String)
 
 module EnvMonad : sig
   type 'a t
+  
+  type value = 
+  | VNum of float
+  | VString of string
+
+  type internal_value =
+  | IVBool of bool
+  | IVString of string
+  | IVFileDescriptor of Out_channel.t
+  | IVFunc of (value list -> value t) 
+
+  type env = value StrMap.t * internal_value StrMap.t
   val return : 'a -> 'a t
   val bind : 'a t -> ('a -> 'b t) -> 'b t
   val lookup : string -> value t
@@ -28,9 +29,21 @@ module EnvMonad : sig
   val (let*) : 'a t -> ('a -> 'b t) -> 'b t
   val (>>)  : 'a t -> 'b t -> 'b t
 end = struct
-  
-  
   type 'a t = env -> env * 'a
+  
+  and value = 
+  | VNum of float
+  | VString of string
+
+  and internal_value =
+  | IVBool of bool
+  | IVString of string
+  | IVFileDescriptor of Out_channel.t
+  | IVFunc of (value list -> value t) 
+
+  and env = value StrMap.t * internal_value StrMap.t
+  
+  
   let return (a: 'a) : 'a t = fun env -> env, a
 
   let bind (a: 'a t) (f: 'a -> 'b t) : 'b t =
@@ -39,19 +52,19 @@ end = struct
       f va env
   
   let lookup (ident: string) : value t =  fun env ->
-    match VarMap.find_opt ident (fst env) with
+    match StrMap.find_opt ident (fst env) with
     | Some v -> env, v
     | None -> env, VString ""
   
   let assign (ident: string) (v: value) : value t = fun env ->
-    let env = VarMap.add ident v (fst env), snd env in
+    let env = StrMap.add ident v (fst env), snd env in
     env, v
   
   let lookup_internal (ident: string) : internal_value option t =  fun env ->
-    env, VarMap.find_opt ident (snd env)
+    env, StrMap.find_opt ident (snd env)
     
   let assign_internal (ident: string) (v: internal_value) : internal_value t = fun env ->
-    let env = fst env, VarMap.add ident v (snd env) in
+    let env = fst env, StrMap.add ident v (snd env) in
     env, v
     
   let view m = m
@@ -60,7 +73,7 @@ end = struct
   let (>>) a b = bind a (fun _ -> b)
 end 
 
-
+open EnvMonad
 
 let string_of_value v = 
   match v with
@@ -97,6 +110,12 @@ let string_of_internal_value_option iv =
   | None -> ""
   | Some (IVString s) -> s
   | _ -> raise (InternalValueError "string_of_internal_value_option" )
+  
+let func_of_internal_value_option iv = 
+  match iv with
+  | Some (IVFunc f) -> f
+  | _ -> raise (InternalValueError "func_of_internal_value_option" )
+  
 let float_of_bool b = if b then 1. else 0.
   
 let get_value ident env = ((EnvMonad.lookup ident |> EnvMonad.view) env) |> snd

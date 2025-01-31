@@ -45,7 +45,7 @@ let () =
         exit 1
       | Some c -> Compile.compile c
     in
-    let setter = (fun env (var, val_) -> Values.VarMap.add var (Values.VString val_) env ) in
+    let setter = (fun env (var, val_) -> Values.StrMap.add var (VString val_) env ) in
     let env = List.fold_left setter (fst Run.default_env) !vars, snd  Run.default_env in
     let env = Run.run_begin env compiled_code in
     (* A file descriptor is passed to Run.run so that the evaluation is lazy *)
@@ -58,7 +58,7 @@ let () =
     let env = if List.is_empty !input_file_paths
     then
       let env = fst @@ view (assign "FILENAME" (VString "stdin")) env in
-      Run.run_repl env compiled_code
+      Run.run_repl env compiled_code (* FIXME nie działa *)
     else
       let env = List.fold_right runner !input_file_paths env in
       let env = Run.run_end env compiled_code in
@@ -66,10 +66,10 @@ let () =
     in 
     (* Close all open file descriptors: *)
     let internal_env = snd env in
-    VarMap.iter (fun _ v -> match v with | IVFileDescriptor file -> Out_channel.close file | _ -> ()) internal_env;
+    StrMap.iter (fun _ v -> match v with | IVFileDescriptor file -> Out_channel.close file | _ -> ()) internal_env;
     ()
   with
-  | Compile.Parse_error(pos, tok) ->
+  | Exceptions.Parse_error(pos, tok) ->
     Printf.eprintf "%s:%d:%d: Syntax error, unexpected token %s\n"
       pos.pos_fname
       pos.pos_lnum
@@ -78,6 +78,12 @@ let () =
     Printf.eprintf "Try running 'echo <your code> to see if bash doesn't substitute variable names\n";
       Printf.eprintf "Try using \' instead of \"\n";
     exit 1
+  | Exceptions.FunctionCallError s ->
+      Printf.eprintf "FunctionCallError: %s\n" s;
+      exit 1
+  | Exceptions.InternalValueError s ->
+      Printf.eprintf "InternalValueError: %s\n" s;
+      exit 1
   | Parser.Error -> 
     Printf.eprintf "Unhandled parsing error!\n";
     exit 1

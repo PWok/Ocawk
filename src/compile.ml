@@ -1,11 +1,11 @@
 open Ast
 open Values
-
+open Exceptions
 open Values.EnvMonad
 
 type compiled_stmt = env -> env * unit
 
-exception Parse_error of Lexing.position * string
+
 
 let parse (s : string) : code =
   let lexbuf = Lexing.from_string s in
@@ -84,7 +84,6 @@ let rebuild_record n (line: string) =
     let* line = rebuild_line (string_of_value sep) n in
     assign_internal "$0" (IVString line)
     
-    
       
 let rec eval_expr (e: expr ) : value t = 
    match e with
@@ -123,6 +122,18 @@ let rec eval_expr (e: expr ) : value t =
     let* v = lookup id in
     assign id  (VNum ( float_of_value v -. 1.)) >>
     return v
+  | FunctionCall(id, es) ->
+    let* values = eval_expr_list es in
+    let* func = lookup_internal @@ "func_" ^ id in
+    (func_of_internal_value_option func) values
+    
+and eval_expr_list es =
+  match es with
+  | [] -> return []
+  | x::xs ->
+    let* v = eval_expr x in
+    let* values = eval_expr_list xs in
+    return (v :: values)
   
 let eval_trigger (cond: condition) : bool t =
   match cond with

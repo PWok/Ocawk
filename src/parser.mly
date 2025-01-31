@@ -70,16 +70,19 @@ let devar v =
 
 %right ASSIGN
 
+%right CONCAT
+
 %nonassoc AND OR
 %nonassoc REGMATCH NREGMATCH
 %nonassoc EQ NEQ LT GT LEQ GEQ
 %left PLUS MINUS
 %left TIMES DIV
 
-%left CONCAT
+
 
 %nonassoc VAR
 %left INCREMENT DECREMENT
+%nonassoc LPAREN
 
 %%
 
@@ -128,8 +131,8 @@ bracketed_actions:
   ;
   
 statement:
-  | PRINT; GT; e=str_expr {PrintWrite([], e)}
-  | PRINT; APPEND; e=str_expr {PrintAppend([], e)}
+  | PRINT; GT; e=base_expr {PrintWrite([], e)}
+  | PRINT; APPEND; e=base_expr {PrintAppend([], e)}
   | PRINT; p = print_body {
           match p with
           | es, Normal   -> Print es
@@ -148,10 +151,10 @@ statement:
   ;
 
 
-print_body:
+print_body: /*  */
   | e = non_gt_expr {[e], Normal}
-  | e1 = non_gt_expr; GT; e2 = str_expr {([e1], Write e2)}
-  | e1 = non_gt_expr; APPEND; e2 = str_expr {([e1], Append e2)}
+  | e1 = non_gt_expr; GT; e2 = expr {([e1], Write e2)}
+  | e1 = non_gt_expr; APPEND; e2 = expr {([e1], Append e2)}
   | e = non_gt_expr; COMMA; p = print_body { let (l, r) = p in (e::l, r)}
   ;
 
@@ -160,11 +163,14 @@ variable:
   | FIELDREF; n = NUM { FieldRef(Num n) }
   | FIELDREF; LPAREN; e=expr; RPAREN { FieldRef e }
 
-str_expr:
+base_expr:
   | LPAREN; e = expr; RPAREN { e }
   | i = NUM { Num i }
   | s = STR { Str s }
+  /* distinction as per https://www.gnu.org/software/gawk/manual/html_node/Calling-Built_002din.html
+     allow calling built-in functions with or without space, user functions only without */
   | v = variable { VarE v } %prec VAR
+  | v = variable; LPAREN; es = separated_list(COMMA, expr); RPAREN { FunctionCall(devar v, es) } /* FIXME: disallow non-built-in functions with space */
   | INCREMENT; x = variable { PreInc (devar x) }
   | x = variable; INCREMENT { PostInc (devar x) }
   | DECREMENT; x = variable { PreDec (devar x) }
@@ -173,8 +179,8 @@ str_expr:
   
 expr:
   | e1 = expr; GT; e2 = expr { Binop(Gt, e1, e2) }
-  | e = str_expr { e }
-  | e1 = str_expr; e2 = expr { Binop(Concat, e1, e2) } %prec CONCAT
+  | e = base_expr { e }
+  | e1 = base_expr; e2 = expr { Binop(Concat, e1, e2) } %prec CONCAT /* FIXME: is this correct? test '{print 1 + 2 "3"}'. Change non_gt_expr too. */
   | e1 = expr; PLUS; e2 = expr { Binop(Add, e1, e2) }
   | e1 = expr; MINUS; e2 = expr { Binop(Sub, e1, e2) }
   | e1 = expr; DIV; e2 = expr { Binop(Div, e1, e2) }
@@ -194,8 +200,8 @@ expr:
   ;
   
 non_gt_expr:
-  | e = str_expr { e }
-  | e1 = str_expr; e2 = non_gt_expr { Binop(Concat, e1, e2) } %prec CONCAT
+  | e = base_expr { e }
+  | e1 = base_expr; e2 = non_gt_expr { Binop(Concat, e1, e2) } %prec CONCAT 
   | e1 = non_gt_expr; PLUS; e2 = non_gt_expr { Binop(Add, e1, e2) }
   | e1 = non_gt_expr; MINUS; e2 = non_gt_expr { Binop(Sub, e1, e2) }
   | e1 = non_gt_expr; DIV; e2 = non_gt_expr { Binop(Div, e1, e2) }
@@ -213,3 +219,5 @@ non_gt_expr:
   | e1 = non_gt_expr; NREGMATCH; e2 = non_gt_expr { Binop(NRegMatch, e1, e2) }
   | v = variable; ASSIGN; e = non_gt_expr {Assign(v, e)}
   ;
+
+

@@ -29,6 +29,7 @@ rule read =
   | ">>" { APPEND }
   | "&&" { AND }
   | "||" { OR }
+  | "=" { ASSIGN } 
   | "==" { EQ }
   | "!=" { NEQ }
   (* | "!"  { NOT } *) (* TODO *)
@@ -58,13 +59,12 @@ rule read =
   | "BEGIN" { BEGIN }
   | "END" { END }
   | "print" { PRINT }
-  | "=" { ASSIGN } 
   | "/" (_+ as r) "/" { REGEX r }
   | '"'
     { Buffer.clear string_buff;
       string lexbuf;
       STR(Buffer.contents string_buff) }
-  | number { NUM (float_of_string (Lexing.lexeme lexbuf)) } 
+  | number { NUM (float_of_string (Lexing.lexeme lexbuf)) }
   | ident { IDENT (Lexing.lexeme lexbuf) }
   | eof { EOF }
 

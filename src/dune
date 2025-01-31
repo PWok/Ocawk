@@ -7,7 +7,7 @@
  (libraries
   str
  )
- (modules ast compile lexer parser run values)
+ (modules ast compile lexer parser run values defaults exceptions)
  )
 
 
