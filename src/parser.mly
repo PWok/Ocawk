@@ -6,11 +6,6 @@ type print_type =
   | Write of expr
   | Append of expr
   
-let devar v = 
-  match v with
-  | Var x -> x
-  | _ -> failwith "this shouldn't (parser devar). Check your code for syntax errors (Increment/Decrement/function call of not identifiers)"
-
 %}
 
 
@@ -62,6 +57,7 @@ let devar v =
 %token COMMA
 %token APPEND
 %token SEMICOLON
+
 %token EOF
 
 
@@ -89,14 +85,14 @@ prog:
 
 instructions:
   | p = pattern { [p, []] }
-  | LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE { [Always, a] }
+  | a = bracketed_actions { [Always, a] }
   | p = pattern; is = instructions { 
         match p, is with
         |      _ , (Always,  a)::xs -> (p, a) :: xs
         | Expr e1, (Expr e2, a)::xs -> (Expr(Binop(Concat, e1, e2)), a) :: xs
         |      _ ,               xs -> (p, [ Print [] ]) :: xs 
     }
-  | LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE; is = instructions { (Always, a) :: is }
+  | a = bracketed_actions; is = instructions { (Always, a) :: is }
   ;
 
   
@@ -122,47 +118,68 @@ regex_pattern:
 action:
   | s = statement { [s] }
   | LBRACE; RBRACE { [] }
-  | LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE { a }
+  | a = bracketed_actions { a }
   ;
 
 bracketed_actions:
-  | s = statement { [s] }
-  | s = statement; nonempty_list(SEMICOLON); a=bracketed_actions { s::a }
-  | s = statement; nonempty_list(SEMICOLON) { [s] }
+  | LBRACE; list(SEMICOLON); a = _bracketed; RBRACE { a }
+  ;
+  
+_bracketed:
+  | s = statement; nonempty_list(SEMICOLON); a=_bracketed { s::a }
+  | s = statement; list(SEMICOLON) { [s] }
   ;
   
 statement:
   | PRINT {Print []}
   | PRINT; GT; e=base_expr {PrintWrite([], e)}
   | PRINT; APPEND; e=base_expr {PrintAppend([], e)}
-  | PRINT; p = print_body {
+  | PRINT; p = print_body1 {
           match p with
           | es, Normal   -> Print es
           | es, Write e -> PrintWrite(es, e)
           | es, Append e -> PrintAppend(es, e)
           }
-  /* | PRINT; LPAREN; es = separated_nonempty_list(COMMA, expr); RPAREN { Print es } */ /* TODO: fix shift/reduce with print ("ala") */
-  
+  | PRINT; LPAREN; es = print_body2; RPAREN { Print es }
+  | PRINT; LPAREN; es = print_body2; RPAREN; GT; e=non_gt_expr { PrintWrite(es, e) }
+  | PRINT; LPAREN; es = print_body2; RPAREN; APPEND; e=non_gt_expr { PrintAppend(es, e) }
   | IF; LPAREN ; e1 = expr; RPAREN ; s = statement { If(e1, [s], [])}
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(SEMICOLON); a = bracketed_actions; RBRACE { If(e1, a, []) }
-  | IF; LPAREN ; e1 = expr; RPAREN ; LBRACE; list(SEMICOLON); a1 = bracketed_actions; RBRACE; ELSE; a2 = action { If(e1, a1, a2) }
-  | FOR; LPAREN; init=expr; SEMICOLON; cond=expr; SEMICOLON; incr=expr; RPAREN; a = action { For(init, cond, incr, a) } /* FIXME: expressions can be omitted, when so they are treated as true */
-  | WHILE; LPAREN; e=expr; RPAREN; a = action { While(e, a) }
-  | DO; a = action ; WHILE ; LPAREN; e = expr; RPAREN { DoWhile(a, e) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; a = bracketed_actions { If(e1, a, []) }
+  | IF; LPAREN ; e1 = expr; RPAREN ; a1 = bracketed_actions; ELSE; a2 = action { If(e1, a1, a2) }
+  | FOR; LPAREN; init=option(expr); SEMICOLON; cond=option(expr); SEMICOLON; incr=option(expr); RPAREN; a = action { 
+                  let init = Option.value init ~default: (Num 1.) in
+                  let cond = Option.value cond ~default: (Num 1.) in
+                  let incr = Option.value incr ~default: (Num 1.) in
+                  For(init, cond, incr, a)
+                  }
+  | WHILE; LPAREN; e=option(expr); RPAREN; a = action { 
+                  let e = Option.value e ~default: (Num 1.) in
+                  While(e, a)
+                  }
+  | DO; a = action ; WHILE ; LPAREN; e = option(expr); RPAREN {
+                  let e = Option.value e ~default: (Num 1.) in
+                  DoWhile(a, e)
+                  }
   | e = expr { ExprStmt e } 
   ;
 
 
-print_body:
+print_body1:
   | e = non_gt_expr {[e], Normal}
   | e1 = non_gt_expr; GT; e2 = expr {([e1], Write e2)}
   | e1 = non_gt_expr; APPEND; e2 = expr {([e1], Append e2)}
-  | e = non_gt_expr; COMMA; p = print_body { let (l, r) = p in (e::l, r)}
+  | e = non_gt_expr; COMMA; p = print_body1 { let (l, r) = p in (e::l, r)}
   ;
+  
+print_body2:
+  | e1 = expr; COMMA; e2 = expr { [e1;e2] }
+  | e = expr; COMMA; p = print_body2 { e::p }
 
 variable:
   | x = IDENT { Var x }
   | FIELDREF; n = NUM { FieldRef(Num n) }
+  | FIELDREF; s = STR { FieldRef(Str s) }
+  | FIELDREF; v = variable { FieldRef(VarE v)}
   | FIELDREF; LPAREN; e=expr; RPAREN { FieldRef e }
 
 base_expr:
@@ -170,10 +187,13 @@ base_expr:
   | LPAREN; e = expr; RPAREN { e }
   | i = NUM { Num i }
   | s = STR { Str s }
-  /* distinction as per https://www.gnu.org/software/gawk/manual/html_node/Calling-Built_002din.html
-     allow calling built-in functions with or without space, user functions only without */
   | v = variable { VarE v } %prec VAR
-  | v = variable; LPAREN; es = separated_list(COMMA, expr); RPAREN { FunctionCall(devar v, es) } /* FIXME: disallow non-built-in functions with space */
+  | v = variable; LPAREN; es = separated_list(COMMA, expr); RPAREN { 
+                          match v, es with
+                          | Var x, _ -> FunctionCall(x, es)
+                          | _, [e]   -> Binop(Concat, VarE v, e)
+                          | _, _     -> failwith "You have $( _ ) (_, _ [,_]*) in your code. Thats incorrect syntax. Don't do that."
+                          }
   | INCREMENT; x = variable { PreInc x }
   | x = variable; INCREMENT { PostInc x }
   | DECREMENT; x = variable { PreDec x }
