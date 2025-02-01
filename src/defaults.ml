@@ -58,9 +58,9 @@ let _close values =
     let file_name = string_of_value x in
     let* file_desc = lookup_internal ("file_" ^ file_name) in
     match file_desc with
-    | Some (IVFileDescriptor fd) -> return @@ Out_channel.close fd
+    | Some (IVFileDescriptor fd) -> Out_channel.close fd; return @@ VString ""
     | Some _ -> raise (InternalValueError ("close called with" ^ file_name ^ " which does not point to file"))
-    | _ -> return () (* Tried to close somethong thats not open -- just ignore it *)
+    | _ -> return @@ VString "" (* Tried to close somethong thats not open -- just ignore it *)
   in
   match values with
   | [x] -> helper x
@@ -92,6 +92,7 @@ let internal_env =
   StrMap.add "func_log" (IVFunc _log)      |> 
   StrMap.add "func_sin" (IVFunc _sin)      |> 
   StrMap.add "func_sqrt" (IVFunc _sqrt)    |> 
-  StrMap.add "func_length" (IVFunc _length)
+  StrMap.add "func_length" (IVFunc _length)|>
+  StrMap.add "func_close" (IVFunc _close)
   
 (* FIXME: add more functions: https://www.gnu.org/software/gawk/manual/html_node/Built_002din.html *)
