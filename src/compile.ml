@@ -83,7 +83,12 @@ let rebuild_record n (line: string) =
     let n = max n (nf |> float_of_value |> int_of_float) in
     let* line = rebuild_line (string_of_value sep) n in
     assign_internal "$0" (IVString line)
+
     
+let floatless_string_of_float f = 
+  if Float.is_integer f
+  then string_of_int @@ int_of_float f
+  else string_of_float f 
       
 let rec eval_expr (e: expr ) : value t = 
    match e with
@@ -91,8 +96,8 @@ let rec eval_expr (e: expr ) : value t =
   | Str s  -> VString s |> return
   | VarE (Var ident) -> lookup ident
   | VarE (FieldRef e) ->
-    let* v = eval_expr e in
-    let* res = lookup_internal ("$" ^ string_of_value v) in
+    let* n = eval_expr e in
+    let* res = lookup_internal ("$" ^ string_of_value n) in
     return @@ VString (string_of_internal_value_option res)
   | Binop(bop, e1, e2) ->
     let* v1 = eval_expr e1 in
@@ -102,26 +107,65 @@ let rec eval_expr (e: expr ) : value t =
     let* v = eval_expr e in
     let* v = assign id v in
     return v
-  | Assign(FieldRef e1, e2) ->
-    let* v = eval_expr e2 in (* First evaluate the value -- this is what awk does *)
-    let v = string_of_value v in
-    let* n = eval_expr e1 in
-    rebuild_record (int_of_float @@ float_of_value n) v >>
-    return (VString v)
-  | PreInc id -> 
+  | PreInc (Var id) -> 
     let* v = lookup id in
     assign id  (VNum ( float_of_value v +. 1.))
-  | PostInc id -> 
+  | PostInc (Var id) -> 
     let* v = lookup id in
     assign id  (VNum ( float_of_value v +. 1.)) >>
     return v
-  | PreDec id -> 
+  | PreDec (Var id) -> 
     let* v = lookup id in
     assign id  (VNum ( float_of_value v -. 1.))
-  | PostDec id ->
+  | PostDec (Var id) ->
     let* v = lookup id in
     assign id  (VNum ( float_of_value v -. 1.)) >>
     return v
+  | Assign(FieldRef e1, e2) -> (* FIXME: Refactor -- move assign and return into rebuild_record? *)
+    let* v = eval_expr e2 in (* NOTE: First evaluate the value, then the ident -- this is what awk does *)
+    let v = string_of_value v in
+    let* n = eval_expr e1 in
+    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
+    else 
+    assign_internal ("$" ^ string_of_value n) (IVString v) >>
+    rebuild_record (int_of_float @@ float_of_value n) v >>
+    return (VString v)
+  | PreInc (FieldRef e) -> 
+    let* n = eval_expr e in
+    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
+    else 
+    let* v = lookup_internal ("$" ^ string_of_value n) in
+    let  v = float_of_internal_value_option v in
+    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v +. 1.))) >>
+    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v +. 1.)) >>
+    return (VString  (floatless_string_of_float (v +. 1.)))
+  | PostInc (FieldRef e) -> 
+    let* n = eval_expr e in
+    if (float_of_value n) < 0. then raise @@ Exceptions.InternalValueError ("Attempt to access field " ^ (string_of_value n))
+    else 
+    let* v = lookup_internal ("$" ^ string_of_value n) in
+    let  v = float_of_internal_value_option v in
+    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v +. 1.))) >>
+    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v +. 1.)) >>
+    return (VString  (floatless_string_of_float v))
+  | PreDec (FieldRef e) -> 
+    let* n = eval_expr e in
+    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
+    else 
+    let* v = lookup_internal ("$" ^ string_of_value n) in
+    let  v = float_of_internal_value_option v in
+    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v -. 1.))) >>
+    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v -. 1.)) >>
+    return (VString  (floatless_string_of_float (v -. 1.)))
+  | PostDec (FieldRef e) ->
+    let* n = eval_expr e in
+    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
+    else 
+    let* v = lookup_internal ("$" ^ string_of_value n) in
+    let  v = float_of_internal_value_option v in
+    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v -. 1.))) >>
+    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v -. 1.)) >>
+    return (VString  (floatless_string_of_float v))
   | FunctionCall(id, es) ->
     let* values = eval_expr_list es in
     let* func = lookup_internal @@ "func_" ^ id in

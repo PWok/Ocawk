@@ -118,6 +118,7 @@ bracketed_actions:
   ;
   
 statement:
+  | PRINT {Print []}
   | PRINT; GT; e=base_expr {PrintWrite([], e)}
   | PRINT; APPEND; e=base_expr {PrintAppend([], e)}
   | PRINT; p = print_body {
@@ -138,7 +139,7 @@ statement:
   ;
 
 
-print_body: /*  */
+print_body:
   | e = non_gt_expr {[e], Normal}
   | e1 = non_gt_expr; GT; e2 = expr {([e1], Write e2)}
   | e1 = non_gt_expr; APPEND; e2 = expr {([e1], Append e2)}
@@ -158,10 +159,10 @@ base_expr:
      allow calling built-in functions with or without space, user functions only without */
   | v = variable { VarE v } %prec VAR
   | v = variable; LPAREN; es = separated_list(COMMA, expr); RPAREN { FunctionCall(devar v, es) } /* FIXME: disallow non-built-in functions with space */
-  | INCREMENT; x = variable { PreInc (devar x) }
-  | x = variable; INCREMENT { PostInc (devar x) }
-  | DECREMENT; x = variable { PreDec (devar x) } /* FIXME it should be possible to apply increment/decrement to fields/records  */
-  | x = variable; DECREMENT { PostDec (devar x) }
+  | INCREMENT; x = variable { PreInc x }
+  | x = variable; INCREMENT { PostInc x }
+  | DECREMENT; x = variable { PreDec x } /* FIXME it should be possible to apply increment/decrement to fields/records  */
+  | x = variable; DECREMENT { PostDec x }
   ;
   
 expr:

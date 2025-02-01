@@ -13,10 +13,10 @@ type expr =
   | Str   of string
   | Binop of bop * expr * expr
   | Assign of variable * expr
-  | PreInc of string     (* ++x *)
-  | PostInc of string    (* x++ *)
-  | PreDec of string     (* --x *)
-  | PostDec of string    (* x-- *)
+  | PreInc of variable     (* ++x *)
+  | PostInc of variable    (* x++ *)
+  | PreDec of variable     (* --x *)
+  | PostDec of variable    (* x-- *)
   | FunctionCall of string * expr list
 and variable =
   | Var of string

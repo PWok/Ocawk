@@ -84,6 +84,9 @@ let () =
   | Exceptions.InternalValueError s ->
       Printf.eprintf "InternalValueError: %s\n" s;
       exit 1
+  | Exceptions.AccessError s ->
+    Printf.eprintf "AccessError: %s\n" s;
+    exit 1
   | Parser.Error -> 
     Printf.eprintf "Unhandled parsing error!\n";
     exit 1
