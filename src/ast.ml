@@ -11,6 +11,7 @@ type expr =
   | VarE of variable
   | Num   of float
   | Str   of string
+  | Not of expr
   | Binop of bop * expr * expr
   | Assign of variable * expr
   | PreInc of variable     (* ++x *)
@@ -32,11 +33,16 @@ type stmt = (* TODO: add more statemnts eg. printf, switch etc. https://www.gnu.
   | DoWhile of stmt list * expr
   | ExprStmt of expr (* Because for some reason assignment is an expression in awk 
                         and has the value of RHS, so we have to do this *)
-  (* TODO: add close function *)
         
+type regex_condition =
+  | Regex of string
+  | RegexAnd of regex_condition * regex_condition
+  | RegexOr of regex_condition * regex_condition
+  | RegexNot of regex_condition
+  
 type condition =
   | Always
-  | Regex of string
+  | RegexC of regex_condition
   | Expr  of expr
   | Begin
   | End

@@ -58,7 +58,7 @@ let () =
     let env = if List.is_empty !input_file_paths
     then
       let env = fst @@ view (assign "FILENAME" (VString "stdin")) env in
-      Run.run_repl env compiled_code (* FIXME nie działa *)
+      Run.run_repl env compiled_code
     else
       let env = List.fold_right runner !input_file_paths env in
       let env = Run.run_end env compiled_code in

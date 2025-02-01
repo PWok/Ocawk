@@ -144,5 +144,7 @@ class TestOperatorPrecedence(TestCase):
 
 #TODO: tests for function calls
 
+# TODO: tests for pattern regex and/or/not
+
 if __name__ == "__main__":
      unittest.main()

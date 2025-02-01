@@ -31,7 +31,7 @@ rule read =
   | "=" { ASSIGN } 
   | "==" { EQ }
   | "!=" { NEQ }
-  (* | "!"  { NOT } *) (* TODO *)
+  | "!"  { NOT }
   | "$" { FIELDREF }
   | "<=" { LEQ }
   | ">=" { GEQ }
@@ -58,7 +58,7 @@ rule read =
   | "BEGIN" { BEGIN }
   | "END" { END }
   | "print" { PRINT }
-  | "/" (_+ as r) "/" { REGEX r }
+  | "/" ([^'/']+ as r) "/" { REGEX r }
   | '"'
     { Buffer.clear string_buff;
       string lexbuf;

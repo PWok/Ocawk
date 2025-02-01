@@ -34,6 +34,7 @@ let devar v =
 
 %token AND
 %token OR
+%token NOT
 
 %token EQ
 %token LT
@@ -67,7 +68,8 @@ let devar v =
 %start <Ast.code> prog
 
 
-%nonassoc AND OR
+%left OR
+%left AND
 %nonassoc REGMATCH NREGMATCH
 %nonassoc EQ NEQ LT GT LEQ GEQ
 %left PLUS MINUS
@@ -98,12 +100,24 @@ instructions:
   ;
 
   
-pattern: /* TODO: allow ORing and ANDing and NOTing patterns */
+pattern:
   | BEGIN     { Begin }
   | END       { End }
-  | r = REGEX { Regex r }
+  | r = regex_pattern { RegexC r }
   | e = expr1 { Expr e }
   ; 
+
+
+base_regex_pattern:
+  | r = REGEX { Regex r}
+  | LPAREN; r = regex_pattern; RPAREN; { r }
+
+regex_pattern:
+  | r1 = regex_pattern; AND; r2 = regex_pattern { RegexAnd(r1, r2) }
+  | r1 = regex_pattern; OR; r2 = regex_pattern { RegexOr(r1, r2) }
+  | NOT; r = base_regex_pattern { RegexNot r }
+  | r = base_regex_pattern { r }
+  ;
   
 action:
   | s = statement { [s] }
@@ -152,6 +166,7 @@ variable:
   | FIELDREF; LPAREN; e=expr; RPAREN { FieldRef e }
 
 base_expr:
+  | NOT; e = base_expr { Not e }
   | LPAREN; e = expr; RPAREN { e }
   | i = NUM { Num i }
   | s = STR { Str s }
@@ -161,7 +176,7 @@ base_expr:
   | v = variable; LPAREN; es = separated_list(COMMA, expr); RPAREN { FunctionCall(devar v, es) } /* FIXME: disallow non-built-in functions with space */
   | INCREMENT; x = variable { PreInc x }
   | x = variable; INCREMENT { PostInc x }
-  | DECREMENT; x = variable { PreDec x } /* FIXME it should be possible to apply increment/decrement to fields/records  */
+  | DECREMENT; x = variable { PreDec x }
   | x = variable; DECREMENT { PostDec x }
   ;
   

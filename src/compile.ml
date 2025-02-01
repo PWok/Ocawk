@@ -15,10 +15,10 @@ let parse (s : string) : code =
     raise (Parse_error(Lexing.lexeme_start_p lexbuf, Lexing.lexeme lexbuf))
 
   
-let regex_match text regex = 
+let regex_match text regex =
   (try Str.search_forward (Str.regexp regex) text 0 with
     | Not_found -> -1) >= 0
-
+;;
   
 let eval_binop bop v1 v2 =
   match bop, v1, v2 with
@@ -99,6 +99,10 @@ let rec eval_expr (e: expr ) : value t =
     let* n = eval_expr e in
     let* res = lookup_internal ("$" ^ string_of_value n) in
     return @@ VString (string_of_internal_value_option res)
+  | Not e ->
+    let* v = eval_expr e in
+    let v = bool_of_value v in
+    return @@ VNum (if v then 0. else 1. )
   | Binop(bop, e1, e2) ->
     let* v1 = eval_expr e1 in
     let* v2 = eval_expr e2 in
@@ -178,16 +182,27 @@ and eval_expr_list es =
     let* v = eval_expr x in
     let* values = eval_expr_list xs in
     return (v :: values)
-  
+
+    
+let eval_regex_trigger (record: string) (r: regex_condition) : bool =
+  let rec inner r = 
+    match r with
+    | Regex r -> regex_match record r
+    | RegexAnd(r1, r2) -> inner r1 && inner r2
+    | RegexOr(r1, r2) -> inner r1 || inner r2
+    | RegexNot r -> not @@ inner r
+  in
+  inner r
+    
 let eval_trigger (cond: condition) : bool t =
   match cond with
   | Always ->
     let* p1 = lookup_internal "isBegin" in
     let* p2 = lookup_internal "isEnd" in 
     return @@ not (bool_of_internal_value_option p1 || bool_of_internal_value_option p2)
-  | Regex r -> 
+  | RegexC r -> 
     let* record = lookup_internal "$0" in
-    let v = regex_match (string_of_internal_value_option record) r in
+    let v = eval_regex_trigger (string_of_internal_value_option record) r in
     let* p1 = lookup_internal "isBegin" in
     let* p2 = lookup_internal "isEnd" in 
     (v && (p1 |> bool_of_internal_value_option |> not) && (p2 |> bool_of_internal_value_option |> not)) |> return 
