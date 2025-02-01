@@ -11,8 +11,8 @@ ONELINER = "./test/test_data/oneliner.txt"
 TSV_FILE = "./test/test_data/example.tsv"
 TEN = "./test/test_data/ten.txt"
 
-def run(code, file):
-    return subprocess.run([OCAWK, code, file], encoding="UTF-8", timeout=1, capture_output=True)
+def run(code, file, timeout=1):
+    return subprocess.run([OCAWK, code, file], encoding="UTF-8", timeout=timeout, capture_output=True)
 
 
 class TestVariableAssignment(TestCase):
@@ -35,13 +35,21 @@ class TestVariableAssignment(TestCase):
         self.assertEqual(res.stdout, "im overwriting things\noverwriting\n")
         
     def test_negative_field_access(self):
-        res = run(r"""{$(-1) = "im breaking things"}""", ONELINER)
-        self.assertEqual(res.stdout, "")
-        self.assertEqual(res.stderr, "AccessError: Attempt to access field -1\n")
+        res1 = run(r"""{$(-1) = "im breaking things"}""", ONELINER)
+        self.assertEqual(res1.stdout, "")
+        self.assertEqual(res1.stderr, "AccessError: Attempt to access field -1\n")
+        
+        res2 = run(r"""{print $(-1)}""", ONELINER)
+        self.assertEqual(res2.stdout, "")
+        self.assertEqual(res2.stderr, "AccessError: Attempt to access field -1\n")
+        
+        
         
     def test_field_inc_dec(self):
         res = run(r"{print ++$1; print $1++; print $1; print $1--; print --$1; print $1}", TEN)
         self.assertEqual(res.stdout, "11\n11\n12\n12\n10\n10\n")
+
+        
 
 class TestFieldOperator(TestCase):
     def test_reference_expr(self):
@@ -135,7 +143,48 @@ class TestOperatorPrecedence(TestCase):
         res = run(r"""{print x = 1 2; print x}""", ONELINER)
         self.assertEqual(res.stdout, "12\n12\n")
 
-# TODO: add tests for loops and if and print
+class TestLoops(TestCase):
+    
+    def test_for(self):
+        res1 = run(r"""{for(x = 0; x<10; x++) print x}""", ONELINER)
+        self.assertEqual(res1.stdout, "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n")
+        
+        res2 = run(r"""{x = -3; for(; x<7; x++) print x}""", ONELINER)
+        self.assertEqual(res2.stdout, "-3\n-2\n-1\n0\n1\n2\n3\n4\n5\n6\n")
+        
+        res3 = run(r"""{x = -3; for(; x<4;) {print x; x++}}""", ONELINER)
+        self.assertEqual(res3.stdout, "-3\n-2\n-1\n0\n1\n2\n3\n")
+        
+    def test_multiple_fors(self):
+        prog = dedent(
+                    """\
+                    BEGIN{
+                    OFS = ""
+                    ORS = "";
+                    }
+                    {
+                        for(i=0; i<=5; i++){
+                            for (j = 0;j<i; j++){
+                                print " "
+                            };
+                            print i, "\\n"
+                        };
+                    }""")
+        res = run(prog, ONELINER)
+        self.assertEqual(res.stdout, "0\n 1\n  2\n   3\n    4\n     5\n")
+    
+    def test_while(self):
+        res = run(r"""{x = 4; while(x>=-2){print x; x--}}""", ONELINER)
+        self.assertEqual(res.stdout, "4\n3\n2\n1\n0\n-1\n-2\n")
+        
+    def test_infinte_while(self):
+        """ This will timeout """
+        with self.assertRaises(subprocess.TimeoutExpired):
+            res = run(r"""{while(){}}""", ONELINER, timeout=1)
+        
+
+# TODO: ifs
+    
 # TODO: tests for print redirection to file
 
 # TODO: add test for running on multiple files

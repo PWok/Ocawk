@@ -46,18 +46,18 @@ let () =
       | Some c -> Compile.compile c
     in
     let setter = (fun env (var, val_) -> Values.StrMap.add var (VString val_) env ) in
-    let env = List.fold_left setter (fst Run.default_env) !vars, snd  Run.default_env in
+    let env = List.fold_left setter (fst Run.default_env) !vars, snd Run.default_env in
     let env = Run.run_begin env compiled_code in
     (* A file descriptor is passed to Run.run so that the evaluation is lazy *)
     let runner (filepath : string) (env : env) =
-      let env = fst @@ view (assign "FILENAME" (VString filepath)) env in
+      let env = StrMap.add "FILENAME" (VString filepath) (fst env), snd env in
       let file = In_channel.open_text filepath in
       let v = Run.run env compiled_code file in
       In_channel.close file; v
     in
     let env = if List.is_empty !input_file_paths
     then
-      let env = fst @@ view (assign "FILENAME" (VString "stdin")) env in
+      let env = StrMap.add "FILENAME" (VString "stdin") (fst env), snd env in
       Run.run_repl env compiled_code
     else
       let env = List.fold_right runner !input_file_paths env in

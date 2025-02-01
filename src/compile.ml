@@ -13,7 +13,7 @@ let parse (s : string) : code =
   try Parser.prog Lexer.read lexbuf with
   | Parser.Error ->
     raise (Parse_error(Lexing.lexeme_start_p lexbuf, Lexing.lexeme lexbuf))
-
+  
   
 let regex_match text regex =
   (try Str.search_forward (Str.regexp regex) text 0 with
@@ -48,16 +48,16 @@ let eval_binop bop v1 v2 =
   | Concat, v1, v2 -> VString (string_of_value v1 ^ string_of_value v2)
 
       
-let rec rebuild_line (sep: string) (n: int) = 
+let rec rebuild_line (sep: string) (n: int) acc = 
   if n = 1
   then
     let* f = lookup_internal "$1" in
-    f |> string_of_internal_value_option |> return
+    let f = string_of_internal_value_option f in
+    return @@ f ^ acc
   else
     let* field = lookup_internal ("$" ^ string_of_int n) in
     let field = string_of_internal_value_option field in
-    let* rest = rebuild_line sep (n-1) in
-    return (rest ^ sep ^ field)
+    rebuild_line sep (n-1) (sep ^ field ^ acc)
 
 let rec rebuild_fields (fields: string list) (i: int) =
   match fields with
@@ -68,6 +68,8 @@ let rec rebuild_fields (fields: string list) (i: int) =
     rebuild_fields xs (i+1)
     
 let rebuild_record n (line: string) =
+  assign_internal ("$" ^ string_of_value n) (IVString line) >>
+  let n = (int_of_float @@ float_of_value n) in
   match n with
   | 0 ->
     let* fs = lookup "FS" in
@@ -81,15 +83,21 @@ let rebuild_record n (line: string) =
     let* nf = lookup "NF" in
     let* sep = lookup "OFS" in
     let n = max n (nf |> float_of_value |> int_of_float) in
-    let* line = rebuild_line (string_of_value sep) n in
+    let* line = rebuild_line (string_of_value sep) n "" in
     assign_internal "$0" (IVString line)
 
     
-let floatless_string_of_float f = 
+let int_str_of_fl f = 
   if Float.is_integer f
   then string_of_int @@ int_of_float f
-  else string_of_float f 
-      
+  else string_of_float f
+
+let negative_guard n = 
+  if (float_of_value n) < 0.
+  then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
+  else ()
+
+  
 let rec eval_expr (e: expr ) : value t = 
    match e with
   | Num n  -> VNum n |> return
@@ -97,6 +105,7 @@ let rec eval_expr (e: expr ) : value t =
   | VarE (Var ident) -> lookup ident
   | VarE (FieldRef e) ->
     let* n = eval_expr e in
+    negative_guard n;
     let* res = lookup_internal ("$" ^ string_of_value n) in
     return @@ VString (string_of_internal_value_option res)
   | Not e ->
@@ -125,56 +134,50 @@ let rec eval_expr (e: expr ) : value t =
     let* v = lookup id in
     assign id  (VNum ( float_of_value v -. 1.)) >>
     return v
-  | Assign(FieldRef e1, e2) -> (* FIXME: Refactor -- move assign and return into rebuild_record? *)
+  | Assign(FieldRef e1, e2) ->
     let* v = eval_expr e2 in (* NOTE: First evaluate the value, then the ident -- this is what awk does *)
     let v = string_of_value v in
     let* n = eval_expr e1 in
-    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
-    else 
-    assign_internal ("$" ^ string_of_value n) (IVString v) >>
-    rebuild_record (int_of_float @@ float_of_value n) v >>
+    negative_guard n;
+    rebuild_record n v >>
     return (VString v)
   | PreInc (FieldRef e) -> 
-    let* n = eval_expr e in
-    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
-    else 
-    let* v = lookup_internal ("$" ^ string_of_value n) in
-    let  v = float_of_internal_value_option v in
-    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v +. 1.))) >>
-    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v +. 1.)) >>
-    return (VString  (floatless_string_of_float (v +. 1.)))
+    let* (n, v) = deref e in
+    rebuild_record n (int_str_of_fl (v +. 1.)) >>
+    return (VString  (int_str_of_fl (v +. 1.)))
   | PostInc (FieldRef e) -> 
-    let* n = eval_expr e in
-    if (float_of_value n) < 0. then raise @@ Exceptions.InternalValueError ("Attempt to access field " ^ (string_of_value n))
-    else 
-    let* v = lookup_internal ("$" ^ string_of_value n) in
-    let  v = float_of_internal_value_option v in
-    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v +. 1.))) >>
-    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v +. 1.)) >>
-    return (VString  (floatless_string_of_float v))
+    let* (n, v) = deref e in
+    rebuild_record n (int_str_of_fl (v +. 1.)) >>
+    return (VString  (int_str_of_fl v))
   | PreDec (FieldRef e) -> 
-    let* n = eval_expr e in
-    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
-    else 
-    let* v = lookup_internal ("$" ^ string_of_value n) in
-    let  v = float_of_internal_value_option v in
-    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v -. 1.))) >>
-    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v -. 1.)) >>
-    return (VString  (floatless_string_of_float (v -. 1.)))
+    let* (n, v) = deref e in
+    rebuild_record n (int_str_of_fl (v -. 1.)) >>
+    return (VString  (int_str_of_fl (v -. 1.)))
   | PostDec (FieldRef e) ->
-    let* n = eval_expr e in
-    if (float_of_value n) < 0. then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
-    else 
-    let* v = lookup_internal ("$" ^ string_of_value n) in
-    let  v = float_of_internal_value_option v in
-    assign_internal ("$" ^ string_of_value n) (IVString (floatless_string_of_float (v -. 1.))) >>
-    rebuild_record (int_of_float @@ float_of_value n) (floatless_string_of_float (v -. 1.)) >>
-    return (VString  (floatless_string_of_float v))
+    let* (n, v) = deref e in
+    rebuild_record n (int_str_of_fl (v -. 1.)) >>
+    return (VString  (int_str_of_fl v))
   | FunctionCall(id, es) ->
     let* values = eval_expr_list es in
     let* func = lookup_internal @@ "func_" ^ id in
-    (func_of_internal_value_option func) values
-    
+    let func = match func with
+    | Some (IVFunc f) -> f
+    | _ -> raise (InternalValueError "func_of_internal_value_option" )
+    in
+    func values
+and[@inline] deref e = 
+  let* n = eval_expr e in
+  negative_guard n;
+  let* v = lookup_internal ("$" ^ string_of_value n) in
+  let  v =  match v with (* float_of_internal_value_option *)
+    | Some (IVString s) ->
+      begin match float_of_string_opt s with (* FIXME: this is not how awk does this see: https://www.gnu.org/software/gawk/manual/html_node/Strings-And-Numbers.html*)
+      | None -> 0.
+      | Some v -> v
+      end
+    | _ -> raise (InternalValueError "float_of_internal_value_option" )
+  in
+  return (n, v)
 and eval_expr_list es =
   match es with
   | [] -> return []
@@ -195,61 +198,65 @@ let eval_regex_trigger (record: string) (r: regex_condition) : bool =
   inner r
     
 let eval_trigger (cond: condition) : bool t =
+  let[@inline] bool_lookup name = 
+    let* v = lookup_internal name in
+    match v with
+    | Some (IVBool b) -> return b
+    | _ -> raise (InternalValueError "bool of internal failed")
+  in
+  let* p1 = bool_lookup "isBegin" in
+  let* p2 = bool_lookup "isEnd" in 
+  let p = (p1 || p2) in
   match cond with
-  | Always ->
-    let* p1 = lookup_internal "isBegin" in
-    let* p2 = lookup_internal "isEnd" in 
-    return @@ not (bool_of_internal_value_option p1 || bool_of_internal_value_option p2)
+  | Always -> return @@ not p
   | RegexC r -> 
     let* record = lookup_internal "$0" in
     let v = eval_regex_trigger (string_of_internal_value_option record) r in
-    let* p1 = lookup_internal "isBegin" in
-    let* p2 = lookup_internal "isEnd" in 
-    (v && (p1 |> bool_of_internal_value_option |> not) && (p2 |> bool_of_internal_value_option |> not)) |> return 
+    return (v && not p)
   | Expr e  -> 
-    let* p1 = lookup_internal "isBegin" in
-    let* p2 = lookup_internal "isEnd" in
     (* If begin or end dont evaluate v *)
-    if (p1 |> bool_of_internal_value_option) || (p2 |> bool_of_internal_value_option)
+    if p
     then
       return false
     else
       let* v = eval_expr e in 
-      v |> bool_of_value |> return
-  | Begin   -> 
-    let* v = lookup_internal "isBegin" in v |> bool_of_internal_value_option |> return
-  | End     -> 
-    let* v = lookup_internal "isEnd" in v |> bool_of_internal_value_option |> return
+      return @@ bool_of_value v
+  | Begin   -> return p1
+  | End     -> return p2
 ;;
 
 
 let eval_print (exprs: expr list): string t = 
   (* evaluate all the expressions, store them and print them. The value of OFS
   is whatever it is after ALL the evaluations (got this behaviour by testing awk) *)
-  let rec inner (exprs: expr list) : string list t = 
+  let rec inner (exprs: expr list) : string list t = begin
     match exprs with
     | [] -> return []
     | e::es -> 
-      let* ofmt = lookup "OFMT" in
+      (* let* ofmt = lookup "OFMT" in *)
       let* v = eval_expr e in
-      let v = match v with
+      let v = string_of_value v (* FIXME *)
+      (* match v with 
         | VString s -> s
         | VNum n -> 
           let ofmt = string_of_value ofmt in
-          Printf.sprintf (Scanf.format_from_string ofmt "%.6g") n
+          Printf.sprintf (Scanf.format_from_string ofmt "%.6g") n *)
       in
       let* tail = inner es in
       return (v :: tail)
+  end
   in
-  let* elems = if exprs = []
-    then
-      let* elem = lookup_internal "$0" in
-      return [elem |> string_of_internal_value_option]
-    else inner exprs
-  in 
-  let* ofs = lookup "OFS" in
-  let line = String.concat (string_of_value ofs) elems in
+  match exprs with
+  | [] ->
+  let* line = lookup_internal "$0" in
+  let line = string_of_internal_value_option line in
   return line
+  | _ -> 
+    let* elems = inner exprs in
+    let* ofs = lookup "OFS" in
+    let line = String.concat (string_of_value ofs) elems in
+    return line
+  
 
   
 let print_to_file e es flags = 
