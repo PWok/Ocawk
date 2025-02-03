@@ -50,9 +50,11 @@ let () =
     let env = Run.run_begin env compiled_code in
     (* A file descriptor is passed to Run.run so that the evaluation is lazy *)
     let runner (filepath : string) (env : env) =
-      let env = StrMap.add "FILENAME" (VString filepath) (fst env), snd env in
+      let v_env, i_env = env in 
+      let v_env = StrMap.add "FILENAME" (VString filepath) v_env in
+      let v_env = StrMap.add "FNR" (VNum 0.) v_env in
       let file = In_channel.open_text filepath in
-      let v = Run.run env compiled_code file in
+      let v = Run.run (v_env, i_env) compiled_code file in
       In_channel.close file; v
     in
     let env = if List.is_empty !input_file_paths

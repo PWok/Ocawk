@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 import subprocess
 import unittest
+import typing
+
 
 from textwrap import dedent
 from unittest import TestCase
@@ -11,8 +13,12 @@ ONELINER = "./test/test_data/oneliner.txt"
 TSV_FILE = "./test/test_data/example.tsv"
 TEN = "./test/test_data/ten.txt"
 
-def run(code, file, timeout=1):
-    return subprocess.run([OCAWK, code, file], encoding="UTF-8", timeout=timeout, capture_output=True)
+def run(code, files, timeout=1):
+    if isinstance(files, str):
+        return subprocess.run([OCAWK, code, files], encoding="UTF-8", timeout=timeout, capture_output=True)
+    if isinstance(files, typing.Sequence):
+        return subprocess.run([OCAWK, code, *files], encoding="UTF-8", timeout=timeout, capture_output=True)
+    raise
 
 
 class TestVariableAssignment(TestCase):
@@ -183,15 +189,29 @@ class TestLoops(TestCase):
             res = run(r"""{while(){}}""", ONELINER, timeout=1)
         
 
-# TODO: ifs
-    
-# TODO: tests for print redirection to file
 
-# TODO: add test for running on multiple files
-# TODO: add tests for build in variables like NR FNR FILENAME etc.
-# TODO: tests for icrement decrement
+class TestMiscellaneous(TestCase):
+    def test_run_on_multiple_files(self):
+        res = run(r"{print FILENAME}", [TEN, ONELINER])
+        self.assertEqual(res.stdout, "./test/test_data/ten.txt\n./test/test_data/oneliner.txt\n")
+        
+    def test_NF(self):
+        res = run(r"{print NF}", [TEN, ONELINER])
+        self.assertEqual(res.stdout, "1\n12\n")
+        
+    def test_FNR(self):
+        res = run(r"{print FNR}", [TSV_FILE, ONELINER])
+        self.assertEqual(res.stdout, "1\n2\n3\n4\n1\n")
+        
+    def test_NR(self):
+        res = run(r"{print NR}", [TSV_FILE, ONELINER])
+        self.assertEqual(res.stdout, "1\n2\n3\n4\n5\n")
 
-#TODO: tests for function calls
+class TestFunctionCalls(TestCase):
+    def test_cos(self):
+        res = run(r"{print cos($1)}", TEN)
+        self.assertEqual(res.stdout, "-0.839071529076\n")
+        
 
 # TODO: tests for pattern regex and/or/not
 
