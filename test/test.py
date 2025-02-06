@@ -141,7 +141,6 @@ class TestBinops(TestCase):
         res = run(r"""{print $1 " " "ma" " " 1 " " "Kota!"}""", ONELINER)
         self.assertEqual(res.stdout, "ala ma 1 Kota!\n")
         
-    # TODO: FIXME: add tests for regex matching
 
 class TestOperatorPrecedence(TestCase):
     
@@ -206,14 +205,38 @@ class TestMiscellaneous(TestCase):
     def test_NR(self):
         res = run(r"{print NR}", [TSV_FILE, ONELINER])
         self.assertEqual(res.stdout, "1\n2\n3\n4\n5\n")
+        
+    def test_OFMT(self):
+        res = res = run(r"""{OFMT="%.8g"; print -0.839071529076; OFMT="%.1g"; print -0.8}""", ONELINER)
+        self.assertEqual(res.stdout, "-0.83907153\n-0.8\n")
 
 class TestFunctionCalls(TestCase):
     def test_cos(self):
         res = run(r"{print cos($1)}", TEN)
-        self.assertEqual(res.stdout, "-0.839071529076\n")
+        self.assertEqual(res.stdout, "-0.839072\n")
         
 
-# TODO: tests for pattern regex and/or/not
+class TestTriggers(TestCase):
+    def test_or(self):
+        res = run(r"NR==1 || NR==3 {print}", TSV_FILE)
+        self.assertEqual(res.stdout, "Przedmiot	Ocena z ćwiczeń	Ocena z egzaminu/projektu\nProg. Fun.	5	5 (mam nadzieję)\n")
+        
+    def test_and(self):
+        res = run(r"NR>3 && $0~/5/ {print}", TSV_FILE)
+        self.assertEqual(res.stdout, "MDM\t5 (nie wiem jak?!)\t3 (jak dobrze pójdzie)\n")
+        
+    def test_regex(self):
+        res = run(r"/3/ {print}", TSV_FILE)
+        self.assertEqual(res.stdout, "MDM\t5 (nie wiem jak?!)\t3 (jak dobrze pójdzie)\n")
+    
+    def test_regex_or(self):
+        res = run(r"/3/ || /4/ {print}", TSV_FILE)
+        self.assertEqual(res.stdout, "Analiza Numeryczna\t4.5\t4\nMDM\t5 (nie wiem jak?!)\t3 (jak dobrze pójdzie)\n")
+    
+    # NOTE: It's currently impossible to and/or regex patterns with expression patterns like this:
+    # `NR>3 && /5/`.
+    # use `NR>3 && $0~/5/` Instead
+
 
 if __name__ == "__main__":
      unittest.main()

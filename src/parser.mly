@@ -105,7 +105,7 @@ pattern:
 
 
 base_regex_pattern:
-  | r = REGEX { Regex r}
+  | r = REGEX { Regex r }
   | LPAREN; r = regex_pattern; RPAREN; { r }
 
 regex_pattern:

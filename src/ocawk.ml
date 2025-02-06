@@ -41,7 +41,7 @@ let () =
     let compiled_code =
       match !code with
       | None ->
-        Printf.eprintf "No code provided\n";
+        Printf.eprintf "No code provided. Run with --help (-- --help when using dune) to see usage.\n";
         exit 1
       | Some c -> Compile.compile c
     in

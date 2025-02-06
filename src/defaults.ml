@@ -33,7 +33,6 @@ let _log values =
     return @@ VNum( log @@ float_of_value x)
   | _ -> raise @@ FunctionCallError ("log function expects 1 argument, got " ^ (string_of_int (List.length values)))
 ;;
-(* FIXME: add randomness -- functions rand and srand. Store seed in internal_values *)
 let _sin values = 
   match values with
   | [x] -> 
@@ -55,8 +54,9 @@ let _length values =
 
 let _close values =
   let helper x = 
-    let file_name = string_of_value x in
-    let* file_desc = lookup_internal ("file_" ^ file_name) in
+    let file_name = "file_" ^ string_of_value x in
+    let* file_desc = lookup_internal  file_name in
+    remove_internal file_name >>
     match file_desc with
     | Some (IVFileDescriptor fd) -> Out_channel.close fd; return @@ VString ""
     | Some _ -> raise (InternalValueError ("close called with" ^ file_name ^ " which does not point to file"))
@@ -77,10 +77,9 @@ let value_env =
   StrMap.add "NR"   (VNum 0.)           |>
   StrMap.add "FNR"  (VNum 0.)           |>
   StrMap.add "NF"   (VNum 0.)           |>
-  StrMap.add "CONVFMT" (VString "%.6g") |> (* FIXME: Currently unused. add this to converting nums to str *)
   StrMap.add "OFMT" (VString "%.6g")    |>
   StrMap.add "FILENAME" (VString "")
-  (* TODO: these are not all: see https://www.gnu.org/software/gawk/manual/html_node/Built_002din-Variables.html *)
+
 
   
 let internal_env = 
@@ -95,4 +94,3 @@ let internal_env =
   StrMap.add "func_length" (IVFunc _length)|>
   StrMap.add "func_close" (IVFunc _close)
   
-(* FIXME: add more functions: https://www.gnu.org/software/gawk/manual/html_node/Built_002din.html *)

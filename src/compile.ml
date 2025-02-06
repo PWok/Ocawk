@@ -1,25 +1,29 @@
 open Ast
-open Values
 open Exceptions
+open Values
 open Values.EnvMonad
 
 type compiled_stmt = env -> env * unit
 
 
 
-let parse (s : string) : code =
-  let lexbuf = Lexing.from_string s in
-  Lexing.set_filename lexbuf "<string>";
-  try Parser.prog Lexer.read lexbuf with
-  | Parser.Error ->
-    raise (Parse_error(Lexing.lexeme_start_p lexbuf, Lexing.lexeme lexbuf))
-  
-  
+(* Genreal utility functions: *)
 let regex_match text regex =
   (try Str.search_forward (Str.regexp regex) text 0 with
     | Not_found -> -1) >= 0
 ;;
-  
+let int_str_of_fl f = 
+  if Float.is_integer f
+  then string_of_int @@ int_of_float f
+  else string_of_float f
+;;
+let negative_guard n = 
+  if (float_of_value n) < 0.
+  then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
+  else ()
+;;
+(* End genreal utility function *)
+
 let eval_binop bop v1 v2 =
   match bop, v1, v2 with
   | Mult, v1, v2 -> VNum (float_of_value v1 *. float_of_value v2)
@@ -46,8 +50,8 @@ let eval_binop bop v1 v2 =
       let matched = string_of_value v1 in
       VNum (float_of_bool (regex_match matched (string_of_value v2)))
   | Concat, v1, v2 -> VString (string_of_value v1 ^ string_of_value v2)
-
-      
+  
+(* Functions for record/field assignment *)
 let rec rebuild_line (sep: string) (n: int) acc = 
   if n = 1
   then
@@ -85,19 +89,8 @@ let rebuild_record n (line: string) =
     let n = max n (nf |> float_of_value |> int_of_float) in
     let* line = rebuild_line (string_of_value sep) n "" in
     assign_internal "$0" (IVString line)
-
-    
-let int_str_of_fl f = 
-  if Float.is_integer f
-  then string_of_int @@ int_of_float f
-  else string_of_float f
-
-let negative_guard n = 
-  if (float_of_value n) < 0.
-  then raise @@ Exceptions.AccessError ("Attempt to access field " ^ (string_of_value n))
-  else ()
-
-  
+;;
+(* End functions for record/field assignment *)
 let rec eval_expr (e: expr ) : value t = 
    match e with
   | Num n  -> VNum n |> return
@@ -165,17 +158,18 @@ let rec eval_expr (e: expr ) : value t =
     | _ -> raise (InternalValueError "func_of_internal_value_option" )
     in
     func values
-and[@inline] deref e = 
+(* Utilities used by and using eval_expr *)
+and deref e = 
   let* n = eval_expr e in
   negative_guard n;
   let* v = lookup_internal ("$" ^ string_of_value n) in
-  let  v =  match v with (* float_of_internal_value_option *)
+  let  v =  match v with
     | Some (IVString s) ->
-      begin match float_of_string_opt s with (* FIXME: this is not how awk does this see: https://www.gnu.org/software/gawk/manual/html_node/Strings-And-Numbers.html*)
+      begin match float_of_string_opt s with (* FIXME: awk converts prefixes see: https://www.gnu.org/software/gawk/manual/html_node/Strings-And-Numbers.html *)
       | None -> 0.
       | Some v -> v
       end
-    | _ -> raise (InternalValueError "float_of_internal_value_option" )
+    | _ -> raise (InternalValueError "Non-string value stored in a field. This shouldn't ever happen" )
   in
   return (n, v)
 and eval_expr_list es =
@@ -185,47 +179,9 @@ and eval_expr_list es =
     let* v = eval_expr x in
     let* values = eval_expr_list xs in
     return (v :: values)
+(* End eval_expr utilities *)
 
-    
-let eval_regex_trigger (record: string) (r: regex_condition) : bool =
-  let rec inner r = 
-    match r with
-    | Regex r -> regex_match record r
-    | RegexAnd(r1, r2) -> inner r1 && inner r2
-    | RegexOr(r1, r2) -> inner r1 || inner r2
-    | RegexNot r -> not @@ inner r
-  in
-  inner r
-    
-let eval_trigger (cond: condition) : bool t =
-  let[@inline] bool_lookup name = 
-    let* v = lookup_internal name in
-    match v with
-    | Some (IVBool b) -> return b
-    | _ -> raise (InternalValueError "bool of internal failed")
-  in
-  let* p1 = bool_lookup "isBegin" in
-  let* p2 = bool_lookup "isEnd" in 
-  let p = (p1 || p2) in
-  match cond with
-  | Always -> return @@ not p
-  | RegexC r -> 
-    let* record = lookup_internal "$0" in
-    let v = eval_regex_trigger (string_of_internal_value_option record) r in
-    return (v && not p)
-  | Expr e  -> 
-    (* If begin or end dont evaluate v *)
-    if p
-    then
-      return false
-    else
-      let* v = eval_expr e in 
-      return @@ bool_of_value v
-  | Begin   -> return p1
-  | End     -> return p2
-;;
-
-
+(* Print-specific funcs *)
 let eval_print (exprs: expr list): string t = 
   (* evaluate all the expressions, store them and print them. The value of OFS
   is whatever it is after ALL the evaluations (got this behaviour by testing awk) *)
@@ -233,14 +189,14 @@ let eval_print (exprs: expr list): string t =
     match exprs with
     | [] -> return []
     | e::es -> 
-      (* let* ofmt = lookup "OFMT" in *)
+      let* ofmt = lookup "OFMT" in
       let* v = eval_expr e in
-      let v = string_of_value v (* FIXME *)
-      (* match v with 
+      let v =
+      match v with 
         | VString s -> s
         | VNum n -> 
           let ofmt = string_of_value ofmt in
-          Printf.sprintf (Scanf.format_from_string ofmt "%.6g") n *)
+          Printf.sprintf (Scanf.format_from_string ofmt "%.6g") n 
       in
       let* tail = inner es in
       return (v :: tail)
@@ -256,9 +212,7 @@ let eval_print (exprs: expr list): string t =
     let* ofs = lookup "OFS" in
     let line = String.concat (string_of_value ofs) elems in
     return line
-  
-
-  
+   
 let print_to_file e es flags = 
   let* file_name = eval_expr e in
   let file_name = string_of_value file_name in
@@ -274,8 +228,9 @@ let print_to_file e es flags =
   output_string file_descriptor (line ^ ors);
   assign_internal ("file_" ^ file_name) (IVFileDescriptor file_descriptor) >>
   return ()
+;;
+(* End print-specific funcs *)
 
-  
 let rec eval_stmt (stmt: stmt) : unit t =
   match stmt with
   | Print es ->
@@ -304,13 +259,6 @@ let rec eval_stmt (stmt: stmt) : unit t =
   | DoWhile(body, cond) ->
     eval_action body >>
     eval_while cond body
-  
-and eval_action (actions: stmt list) : unit t =
-  match actions with
-  | [] -> return ()
-  | x::xs ->
-    eval_stmt x >>
-    eval_action xs
 
 and eval_for (cond: expr) (incr: expr) (body: stmt list) : unit t = 
   let* p = eval_expr cond in
@@ -328,8 +276,52 @@ and eval_while (cond: expr) (body: stmt list) : unit t =
     eval_while cond body
   else
     return ()
-  
-  
+    
+and eval_action (actions: stmt list) : unit t =
+  match actions with
+  | [] -> return ()
+  | x::xs ->
+    eval_stmt x >>
+    eval_action xs
+;;
+
+let eval_regex_trigger (record: string) (r: regex_condition) : bool =
+  let rec inner r = 
+    match r with
+    | Regex r -> regex_match record r
+    | RegexAnd(r1, r2) -> inner r1 && inner r2
+    | RegexOr(r1, r2) -> inner r1 || inner r2
+    | RegexNot r -> not @@ inner r
+  in
+  inner r
+    
+let eval_trigger (cond: condition) : bool t =
+  let bool_lookup name = 
+    let* v = lookup_internal name in
+    match v with
+    | Some (IVBool b) -> return b
+    | _ -> raise (InternalValueError "bool of internal failed")
+  in
+  let* p1 = bool_lookup "isBegin" in
+  let* p2 = bool_lookup "isEnd" in 
+  let p = (p1 || p2) in
+  match cond with
+  | Always -> return @@ not p
+  | RegexC r -> 
+    let* record = lookup_internal "$0" in
+    let v = eval_regex_trigger (string_of_internal_value_option record) r in
+    return (v && not p)
+  | Expr e  -> 
+    (* If begin or end dont evaluate v *)
+    if p
+    then
+      return false
+    else
+      let* v = eval_expr e in 
+      return @@ bool_of_value v
+  | Begin   -> return p1
+  | End     -> return p2
+;;
     
 let eval_instruction (instr: instruction): unit t = 
   let trigger, actions = instr in
@@ -341,6 +333,14 @@ let eval_instruction (instr: instruction): unit t =
   
 let compile_code (code: code): compiled_stmt = fun env -> 
   List.fold_left (fun acc instr -> (eval_instruction instr |> view) acc |> fst) env code, ()
+
+let parse (s : string) : code =
+  let lexbuf = Lexing.from_string s in
+  Lexing.set_filename lexbuf "<string>";
+  try Parser.prog Lexer.read lexbuf with
+  | Parser.Error ->
+    raise (Parse_error(Lexing.lexeme_start_p lexbuf, Lexing.lexeme lexbuf))
+
 
 let compile (s : string)  =
    s |> parse |> compile_code

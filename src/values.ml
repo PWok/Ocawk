@@ -23,6 +23,7 @@ module EnvMonad : sig
   
   val lookup_internal : string -> internal_value option t
   val assign_internal : string -> internal_value -> unit t
+  val remove_internal : string -> unit t
   
   val view: 'a t -> (env -> env * 'a)
   val hide: (env -> env * 'a) -> 'a t
@@ -66,6 +67,10 @@ end = struct
     
   let assign_internal (ident: string) (v: internal_value) : unit t = fun env ->
     let env = fst env, StrMap.add ident v (snd env) in
+    env, ()
+    
+  let remove_internal (ident: string) : unit t = fun env ->
+    let env = fst env, StrMap.remove ident (snd env) in
     env, ()
     
   let view m = m

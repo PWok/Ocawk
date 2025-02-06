@@ -4,6 +4,7 @@ open Values.EnvMonad
 
 let default_env = Defaults.value_env, Defaults.internal_env
 
+(* General utility function *)
 let get_value ident env = ((EnvMonad.lookup ident |> EnvMonad.view) env) |> snd;;
 
 let remove_old_fields (env: env) : env = 
